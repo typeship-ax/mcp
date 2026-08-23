@@ -17,14 +17,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Await the first generated package
+        if: hashFiles('package.json') == ''
+        run: echo "Package checks begin with the first Typeship release PR."
       - name: Install build dependencies
+        if: hashFiles('package.json') != ''
         run: npm install --no-audit --no-fund
       - name: Build and test
+        if: hashFiles('package.json') != ''
         run: npm test
       - name: Verify the MCP package boundary
+        if: hashFiles('package.json') != ''
         run: >-
           node -e "const p=require('./package.json');
           if(p.name!=='@typeship-ax/mcp'||p.mcpName!=='dev.typeship/typeship'||p.bin?.['typeship-mcp']!=='dist/mcp.js'||Object.keys(p.bin??{}).length!==1)
           throw new Error('unexpected MCP package identity')"
       - name: Verify the published package
+        if: hashFiles('package.json') != ''
         run: npm pack --dry-run
