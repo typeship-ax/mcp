@@ -1,14 +1,16 @@
 # typeship — agent context
 
-This package contains the generated MCP server for **typeship** (v0.6.0).
+This package contains the generated MCP server for **typeship** (API v1.0.0, package v1.0.0).
 
-Generate production SDKs, CLIs, and MCP servers from an OpenAPI or
-GraphQL spec, and keep every selected output current.
+Resolve an OpenAPI or GraphQL Definition, diagnose it, and keep every
+selected SDK, CLI, and MCP Target current.
 
-Every operation but one requires an API key, created in the console and
-sent as `Authorization: Bearer ak_...`. A browser session is not a
-credential for this API. The exception is POST /generate, which works
-anonymously with the free plan's limits.
+Every operation but one requires a bearer credential: an organization
+API key from the console, or an OAuth access token carrying the operation's
+read, generate, or write capability and the organization selected during
+consent. OAuth grants cannot switch organizations after consent. A browser
+session is not a credential for this API. The exception is POST /generate,
+which works anonymously with the free plan's limits.
 
 ## Ground rules
 - Generated code: never edit files in this package by hand — changes are lost on regeneration. Wrap the client in your own code instead.
@@ -19,7 +21,8 @@ anonymously with the free plan's limits.
 - Bearer token: set the `TYPESHIP_TOKEN` environment variable.
 
 ## MCP server
-- Run `typeship-mcp` over stdio from an MCP client, or use `npx -y --package @typeship-ax/mcp typeship-mcp`. Set the package's auth environment variables in that client; `--read-only` prevents write tools.
+- Run `typeship-mcp` over stdio from an MCP client, or use `npx -y --package typeship-mcp typeship-mcp`. Set the package's auth environment variables in that client; `--read-only` prevents write tools.
+- This package exposes the compact `search_docs`, `read_docs`, and `execute` surface. Find an operation, read its complete contract, then call `execute` with its name and `arguments`; destructive operations return `CONFIRMATION_REQUIRED` until repeated with `confirm: true`. Operation names are not directly callable tools in this mode.
 - Tool arguments are checked against the schema before any request (unknown or mistyped arguments are one `isError` result with per-argument issues); pass `fields` (dotted paths) to keep only the result keys you need; errors carry `code` and `next_steps`.
 
 ## Documentation
