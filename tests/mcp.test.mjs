@@ -41,7 +41,7 @@ function talk(env, requests) {
 }
 
 test("server/discover, tools/list, tools/call over stdio", async () => {
-  const mock = await startMock({ status: 200, contentType: "application/json", body: "{\"files\":[{\"path\":\"example\",\"content\":\"example\"}],\"warnings\":[\"example\"],\"meta\":{\"title\":\"example\",\"api_version\":\"example\",\"version\":\"example\",\"spec_format\":\"openapi\",\"oas_version\":\"example\",\"converted\":true,\"artifact_name\":\"example\",\"client_name\":\"example\",\"generators\":[\"typescript-sdk\"],\"resource_count\":1,\"operation_count\":1,\"schema_count\":1,\"paginated_operation_count\":1,\"omitted_operation_count\":1,\"pr_url\":\"example\",\"pr_number\":1,\"pr_status\":\"opened\",\"pr_error\":\"example\",\"changelog\":\"example\",\"breaking_count\":1,\"baseline\":\"destination\",\"api_compatibility\":\"compatible\",\"package_compatibility\":\"compatible\",\"version_correct\":true,\"release_readiness\":\"success\",\"release_readiness_note\":\"example\",\"previous_version\":\"example\",\"file_count\":1,\"total_lines\":1,\"diagnostics\":{\"format\":\"openapi\",\"summary\":{\"diagnostics\":1,\"occurrences\":1,\"errors\":1,\"warnings\":1,\"suggestions\":1,\"auto_fixable\":1}}},\"limits\":{\"max_operations\":1,\"generated_operations\":1,\"omitted_operations\":1,\"total_operations\":1,\"reason\":\"anonymous\",\"signup_url\":\"example\",\"upgrade_url\":\"example\"},\"claim\":null}" });
+  const mock = await startMock({ status: 200, contentType: "application/json", body: "{\"files\":[{\"path\":\"example\",\"content\":\"example\"}],\"warnings\":[\"example\"],\"meta\":{\"title\":\"example\",\"api_version\":\"example\",\"version\":\"example\",\"spec_format\":\"openapi\",\"oas_version\":\"example\",\"converted\":true,\"artifact_name\":\"example\",\"client_name\":\"example\",\"generators\":[\"typescript-sdk\"],\"resource_count\":1,\"operation_count\":1,\"schema_count\":1,\"paginated_operation_count\":1,\"omitted_operation_count\":1,\"pr_url\":\"example\",\"pr_number\":1,\"pr_status\":\"opened\",\"pr_error\":\"example\",\"changelog\":\"example\",\"breaking_count\":1,\"baseline\":\"destination\",\"api_compatibility\":\"compatible\",\"package_compatibility\":\"compatible\",\"version_correct\":true,\"release_readiness\":\"success\",\"release_readiness_note\":\"example\",\"previous_version\":\"example\",\"file_count\":1,\"total_lines\":1,\"diagnostics\":{\"format\":\"openapi\",\"summary\":{\"diagnostics\":1,\"occurrences\":1,\"errors\":1,\"warnings\":1,\"suggestions\":1,\"auto_fixable\":1}}},\"limits\":{\"max_operations\":1,\"generated_operations\":1,\"omitted_operations\":1,\"total_operations\":1,\"reason\":\"anonymous\",\"signup_url\":\"example\",\"upgrade_url\":\"example\"},\"claim\":null,\"request_id\":\"req_3k8m1v6q9p2d7h4c\"}" });
   try {
     const responses = await talk({ "TYPESHIP_BASE_URL": mock.url, "TYPESHIP_TOKEN": "test-token" }, [
       { jsonrpc: "2.0", id: 1, method: "server/discover", params: { _meta: META } },
@@ -59,6 +59,21 @@ test("server/discover, tools/list, tools/call over stdio", async () => {
     assert.equal(request.method, "POST");
     assert.equal(request.path.split("?")[0], "/generate");
     assert.equal(request.headers["authorization"], "Bearer test-token");
+  } finally {
+    mock.close();
+  }
+});
+
+test("tool errors prefer the JSON request_id over a stale header", async () => {
+  const mock = await startMock({ status: 500, contentType: "application/json", body: JSON.stringify({ code: "internal_error", message: "expected failure", request_id: "req_mcp_body_test" }), headers: { "Request-Id": "req_mcp_stale" } });
+  try {
+    const responses = await talk({ "TYPESHIP_BASE_URL": mock.url, "TYPESHIP_TOKEN": "test-token" }, [
+      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "execute", arguments: {"operation":"generate_run","arguments":{"definition":{},"target":{}}}, _meta: META } },
+    ]);
+    const call = responses.get(4);
+    assert.equal(call.result.isError, true, JSON.stringify(call).slice(0, 300));
+    const detail = JSON.parse(call.result.content[0].text);
+    assert.equal(detail.request_id, "req_mcp_body_test");
   } finally {
     mock.close();
   }

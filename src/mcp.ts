@@ -171,11 +171,11 @@ async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, authH
   const shape = { fields, maxChars, pagination: op.pagination, args };
   try {
     const target = (getClient() as unknown as Record<string, Record<string, (...a: unknown[]) => unknown>>)[op.resource]!;
-    const result = await (target[op.method]!(...callArgs) as Promise<{ ok: boolean; data?: unknown; error?: unknown }>);
+    const result = await (target[op.method]!(...callArgs) as Promise<{ ok: boolean; data?: unknown; error?: unknown; response?: { requestId?: string } }>);
     if (!result.ok) return errorOutcome(result.error, errorContext);
     if (op.paginated) {
-      const page = result.data as { items: unknown[]; nextPageParams(): Record<string, unknown> | null };
-      return pageOutcome(page.items, page.nextPageParams(), shape);
+      const page = result.data as { items: unknown[]; nextPageParams(): Record<string, unknown> | null; response: { requestId?: string } };
+      return pageOutcome(page.items, page.nextPageParams(), { ...shape, requestId: page.response.requestId });
     }
     // A binary body (the SDK hands back a Blob): an image block, or a file
     // on disk, never "{}".

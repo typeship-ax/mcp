@@ -900,6 +900,9 @@ export function projectFields(value: unknown, paths: string[][] | null): unknown
 export interface ResultOptions {
   fields?: string[][] | null;
   maxChars?: number;
+  /** Request identifier for a page that is reshaped into the MCP paging
+   * envelope. Ordinary object results already retain their body field. */
+  requestId?: string;
   /** For paginated results that must be cut: the op's pagination config and
    * the call's arguments let some styles resume exactly where the cut fell. */
   pagination?: OpLike["pagination"];
@@ -931,13 +934,18 @@ export function pageOutcome(items: unknown[], nextPage: Record<string, unknown> 
   const fields = options.fields ?? null;
   const maxChars = options.maxChars ?? DEFAULT_MAX_RESULT_CHARS;
   const shown = projectFields(items, fields) as unknown[];
-  const full = { items: shown, hasMore: nextPage !== null, ...(nextPage !== null ? { nextPage } : {}) };
+  const full = {
+    items: shown,
+    hasMore: nextPage !== null,
+    ...(nextPage !== null ? { nextPage } : {}),
+    ...(options.requestId ? { request_id: options.requestId } : {}),
+  };
   const text = JSON.stringify(full);
   if (text.length <= maxChars) {
     return { text, isError: false, structured: full };
   }
 
-  const overhead = JSON.stringify({ items: [], hasMore: true, nextPage: nextPage ?? {}, truncated: { omitted: 0, of: 0, reason: "x".repeat(160), next_steps: ["x".repeat(220), "x".repeat(120)] } }).length;
+  const overhead = JSON.stringify({ items: [], hasMore: true, nextPage: nextPage ?? {}, ...(options.requestId ? { request_id: options.requestId } : {}), truncated: { omitted: 0, of: 0, reason: "x".repeat(160), next_steps: ["x".repeat(220), "x".repeat(120)] } }).length;
   const k = itemsThatFit(shown, Math.max(0, maxChars - overhead));
   const omitted = shown.length - k;
   const pg = options.pagination;
@@ -961,6 +969,7 @@ export function pageOutcome(items: unknown[], nextPage: Record<string, unknown> 
     items: shown.slice(0, k),
     hasMore: resume !== null ? true : nextPage !== null,
     ...(resume !== null ? { nextPage: resume } : nextPage !== null ? { nextPage } : {}),
+    ...(options.requestId ? { request_id: options.requestId } : {}),
     truncated: {
       omitted,
       of: shown.length,
@@ -1179,13 +1188,18 @@ function notFoundNextSteps(message: string, body: unknown): string[] {
 /** A typed API error as the agent should see it: name, a stable code, the
  * message, status, the API's body, where to read more, and what to do. */
 export function errorOutcome(error: unknown, context: ErrorContext = {}): ToolOutcome {
-  const e = error as { name?: string; message?: string; status?: number; body?: unknown };
+  const e = error as { name?: string; message?: string; status?: number; body?: unknown; response?: { requestId?: string } };
   const { code, nextSteps } = classifyError(error, context);
+  const bodyRequestId = e?.body && typeof e.body === "object" && !Array.isArray(e.body)
+    ? (e.body as Record<string, unknown>).request_id ?? (e.body as Record<string, unknown>).requestId
+    : undefined;
+  const requestId = e?.response?.requestId ?? (typeof bodyRequestId === "string" ? bodyRequestId : undefined);
   const structured = {
     error: e?.name ?? "Error",
     code,
     message: e?.message,
     ...(typeof e?.status === "number" ? { status: e.status } : {}),
+    ...(requestId ? { request_id: requestId } : {}),
     ...(e?.body !== undefined ? { body: e.body } : {}),
     ...(context.docsUrl ? { docs_url: context.docsUrl } : {}),
     next_steps: nextSteps,
