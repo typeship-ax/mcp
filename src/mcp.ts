@@ -20,19 +20,20 @@ import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TypeshipClient, formatDebugEvent, type DebugEvent } from "./index.js";
+import { TypeshipClient, formatDebugEvent, type ClientOptions, type DebugEvent } from "./index.js";
 import { GLOBALS, OPS, buildArgs, type OpSpec } from "./ops.js";
 import {
   DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
-  dataOutcome, errorOutcome, fetchDocsText, handleRpc, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, serverInstructions,
+  dataOutcome, errorOutcome, handleRpc, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, serverInstructions,
   takeCancelled, textError, toolDefinitions, visibleOps,
   type ArgumentIssue, type DocsSource, type McpServer, type OpLike, type RpcOutcome, type ToolOutcome,
 } from "./mcp-protocol.js";
+import { fetchDocsText } from "./docs.js";
 
 const BIN = "typeship";
 const PKG_NAME = "@typeship-ax/mcp";
 const SERVER_NAME = "typeship-mcp";
-const SERVER_VERSION = "0.6.0";
+const SERVER_VERSION = "0.7.0";
 /** The MCP client's announced name (clientInfo in request _meta), for the User-Agent. */
 let MCP_CLIENT_NAME: string | null = null;
 function noteClientInfo(message: unknown): void {
@@ -43,7 +44,7 @@ function noteClientInfo(message: unknown): void {
 const DEFAULT_BASE_URL = "https://typeship.dev/api/v1";
 const AUTH_SCALARS: { option: string; flag: string; env: string }[] = [{"option":"bearerToken","flag":"token","env":"TYPESHIP_TOKEN"}];
 const BASIC: { envUser: string; envPass: string } | null = null;
-const OAUTH_TOKEN_URL: string | null = null;
+
 const ENVIRONMENTS: Record<string, string> = {};
 const DOCS_URL_DEFAULT: string | null = "https://typeship.dev";
 /** "meta" collapses per-operation tools into search/read/execute so huge
@@ -88,7 +89,6 @@ function makeClient(): TypeshipClient {
     oauth?: { accessToken: string };
   }>("credentials.json");
   const config = readJson<{ baseUrl?: string; environment?: string }>("config.json");
-  const options: Record<string, unknown> = {};
   const baseUrl = process.env["TYPESHIP_BASE_URL"]
     ?? config?.baseUrl
     ?? (config?.environment !== undefined ? ENVIRONMENTS[config.environment] : undefined)
@@ -98,7 +98,7 @@ function makeClient(): TypeshipClient {
     // instead of a server that vanished mid-conversation.
     throw new Error("No base URL configured: set TYPESHIP_BASE_URL in the MCP server's environment, or run '" + BIN + " config set base-url <url>'.");
   }
-  options.baseUrl = baseUrl;
+  const options: ClientOptions & Record<string, unknown> = { baseUrl };
   for (const a of AUTH_SCALARS) {
     const v = process.env[a.env] ?? stored?.scalars?.[a.option];
     if (v !== undefined) options[a.option] = v;
@@ -108,16 +108,7 @@ function makeClient(): TypeshipClient {
     const password = process.env[BASIC.envPass] ?? stored?.basic?.password;
     if (username !== undefined && password !== undefined) options.basicAuth = { username, password };
   }
-  const oauthClientId = process.env["TYPESHIP_CLIENT_ID"];
-  const oauthClientSecret = process.env["TYPESHIP_CLIENT_SECRET"];
-  if ((oauthClientId === undefined) !== (oauthClientSecret === undefined)) {
-    throw new Error("OAuth client credentials are incomplete: set both TYPESHIP_CLIENT_ID and TYPESHIP_CLIENT_SECRET in the MCP server's environment.");
-  }
-  if (oauthClientId !== undefined && oauthClientSecret !== undefined) {
-    const tokenUrl = process.env["TYPESHIP_TOKEN_URL"] ?? OAUTH_TOKEN_URL ?? undefined;
-    if (!tokenUrl) throw new Error("OAuth client credentials need a token URL: set TYPESHIP_TOKEN_URL in the MCP server's environment.");
-    options.clientCredentials = { clientId: oauthClientId, clientSecret: oauthClientSecret, tokenUrl };
-  }
+
   if (options.bearerToken === undefined && stored?.oauth?.accessToken !== undefined) {
     options.bearerToken = stored.oauth.accessToken;
   }
@@ -130,7 +121,7 @@ function makeClient(): TypeshipClient {
   }
   // The local MCP server identifies itself (surface + the client it serves, when announced).
   options.defaultHeaders = { "User-Agent": PKG_NAME + "-mcp/" + SERVER_VERSION + " (typeship" + (MCP_CLIENT_NAME ? "; client=" + MCP_CLIENT_NAME : "") + ")" };
-  return new TypeshipClient(options as never);
+  return new TypeshipClient(options);
 }
 
 let clientInstance: TypeshipClient | undefined;
@@ -180,11 +171,11 @@ async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, authH
   const shape = { fields, maxChars, pagination: op.pagination, args };
   try {
     const target = (getClient() as unknown as Record<string, Record<string, (...a: unknown[]) => unknown>>)[op.resource]!;
-    const result = await (target[op.method]!(...callArgs) as Promise<{ ok: boolean; data?: unknown; error?: unknown }>);
+    const result = await (target[op.method]!(...callArgs) as Promise<{ ok: boolean; data?: unknown; error?: unknown; response?: { requestId?: string } }>);
     if (!result.ok) return errorOutcome(result.error, errorContext);
     if (op.paginated) {
-      const page = result.data as { items: unknown[]; nextPageParams(): Record<string, unknown> | null };
-      return pageOutcome(page.items, page.nextPageParams(), shape);
+      const page = result.data as { items: unknown[]; nextPageParams(): Record<string, unknown> | null; response: { requestId?: string } };
+      return pageOutcome(page.items, page.nextPageParams(), { ...shape, requestId: page.response.requestId });
     }
     // A binary body (the SDK hands back a Blob): an image block, or a file
     // on disk, never "{}".
@@ -246,6 +237,9 @@ function serverFor(authHeader?: string): McpServer {
     }),
     toolsTtlMs: TOOLS_TTL_MS,
     listTools: () => toolDefinitions(docsSource.ops, TOOL_MODE),
+    unknownToolMessage: TOOL_MODE === "meta"
+      ? (name) => "Unknown tool: " + name + ". This server uses compact mode; call search_docs to discover an operation, then call execute with operation: \"" + name + "\"."
+      : undefined,
     callTool: async (name, args) => {
       const shared = await callSharedTool(name, args, docsSource, (op, opArgs) => callOperation(op as OpSpec, opArgs, authHeader));
       if (shared !== undefined) return shared;

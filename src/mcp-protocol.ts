@@ -16,6 +16,7 @@
  */
 
 import { dateKindOf, relativeDate } from "./dates.js";
+import { resolveDocsPageUrl } from "./docs.js";
 
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 /** Revisions served. Legacy (initialize-handshake) revisions are not; an
@@ -154,6 +155,10 @@ export interface McpServer {
    * -32602), a ToolOutcome otherwise. Throwing yields -32603.
    */
   callTool(name: string, args: Record<string, unknown>): Promise<ToolOutcome | undefined>;
+  /** Optional actionable wording for an unknown tool name. The protocol
+   * code remains -32602; compact tool surfaces can explain how to call an
+   * operation without pretending that operation is absent. */
+  unknownToolMessage?(name: string): string;
   /** Called before a tool runs; a non-null outcome is sent instead
    * (rate limiting, entitlement). */
   beforeToolCall?(name: string): Promise<RpcOutcome | null> | RpcOutcome | null;
@@ -311,7 +316,7 @@ export async function handleRpc(server: McpServer, incoming: unknown): Promise<R
       if (denied) return denied;
       const started = Date.now();
       const outcome = await server.callTool(name, args);
-      if (outcome === undefined) return rpcError(id, -32602, "Unknown tool: " + name, 400);
+      if (outcome === undefined) return rpcError(id, -32602, server.unknownToolMessage?.(name) ?? "Unknown tool: " + name, 400);
       if (server.afterToolCall) await server.afterToolCall(name, outcome, Date.now() - started);
       // A tool that declares an outputSchema MUST return structuredContent,
       // and clients enforce it: a successful result without it fails the
@@ -580,31 +585,6 @@ export function toolDefinitions(ops: OpLike[], mode: "operations" | "meta"): Too
   return [...ops.map(operationTool), SEARCH_DOCS_TOOL, READ_DOCS_TOOL];
 }
 
-/** How big a tools/list is, as agents pay for it. Characters of JSON and a
- * rough token count (one token per four characters, the usual estimate for
- * JSON). Generation and `<bin> mcp` report it. */
-export function toolsListSize(tools: ToolDefinition[]): { tools: number; chars: number; approxTokens: number } {
-  const chars = JSON.stringify(tools).length;
-  return { tools: tools.length, chars, approxTokens: Math.round(chars / 4) };
-}
-
-/** Keep automatic per-operation discovery under roughly 10k tokens. The
- * schema, not merely the operation count, determines what an agent pays. */
-export const MCP_AUTO_MAX_TOOLS_LIST_CHARS = 40_000;
-
-export function resolveToolMode(
-  ops: OpLike[],
-  requested: "operations" | "meta" | "auto" = "auto",
-): { mode: "operations" | "meta"; tools: number; chars: number; approxTokens: number } {
-  if (requested === "operations" || requested === "meta") {
-    return { mode: requested, ...toolsListSize(toolDefinitions(ops, requested)) };
-  }
-  const operations = toolsListSize(toolDefinitions(ops, "operations"));
-  const mode = ops.length > 100 || operations.chars > MCP_AUTO_MAX_TOOLS_LIST_CHARS ? "meta" : "operations";
-  return mode === "operations"
-    ? { mode, ...operations }
-    : { mode, ...toolsListSize(toolDefinitions(ops, mode)) };
-}
 
 /** Resolve an operation by tool name or dotted resource.method. */
 export function findOperation(ops: OpLike[], wanted: string): OpLike | undefined {
@@ -920,6 +900,9 @@ export function projectFields(value: unknown, paths: string[][] | null): unknown
 export interface ResultOptions {
   fields?: string[][] | null;
   maxChars?: number;
+  /** Request identifier for a page that is reshaped into the MCP paging
+   * envelope. Ordinary object results already retain their body field. */
+  requestId?: string;
   /** For paginated results that must be cut: the op's pagination config and
    * the call's arguments let some styles resume exactly where the cut fell. */
   pagination?: OpLike["pagination"];
@@ -951,13 +934,18 @@ export function pageOutcome(items: unknown[], nextPage: Record<string, unknown> 
   const fields = options.fields ?? null;
   const maxChars = options.maxChars ?? DEFAULT_MAX_RESULT_CHARS;
   const shown = projectFields(items, fields) as unknown[];
-  const full = { items: shown, hasMore: nextPage !== null, ...(nextPage !== null ? { nextPage } : {}) };
+  const full = {
+    items: shown,
+    hasMore: nextPage !== null,
+    ...(nextPage !== null ? { nextPage } : {}),
+    ...(options.requestId ? { request_id: options.requestId } : {}),
+  };
   const text = JSON.stringify(full);
   if (text.length <= maxChars) {
     return { text, isError: false, structured: full };
   }
 
-  const overhead = JSON.stringify({ items: [], hasMore: true, nextPage: nextPage ?? {}, truncated: { omitted: 0, of: 0, reason: "x".repeat(160), next_steps: ["x".repeat(220), "x".repeat(120)] } }).length;
+  const overhead = JSON.stringify({ items: [], hasMore: true, nextPage: nextPage ?? {}, ...(options.requestId ? { request_id: options.requestId } : {}), truncated: { omitted: 0, of: 0, reason: "x".repeat(160), next_steps: ["x".repeat(220), "x".repeat(120)] } }).length;
   const k = itemsThatFit(shown, Math.max(0, maxChars - overhead));
   const omitted = shown.length - k;
   const pg = options.pagination;
@@ -981,6 +969,7 @@ export function pageOutcome(items: unknown[], nextPage: Record<string, unknown> 
     items: shown.slice(0, k),
     hasMore: resume !== null ? true : nextPage !== null,
     ...(resume !== null ? { nextPage: resume } : nextPage !== null ? { nextPage } : {}),
+    ...(options.requestId ? { request_id: options.requestId } : {}),
     truncated: {
       omitted,
       of: shown.length,
@@ -1123,7 +1112,7 @@ export async function binaryOutcome(blob: Blob, options: BinaryOptions = {}): Pr
  * generated CLI's error envelope). Additive only. */
 export type ErrorCode =
   | "NO_AUTH" | "AUTH_INVALID" | "PLAN_LIMIT" | "NOT_FOUND" | "INVALID_REQUEST" | "RATE_LIMITED"
-  | "SERVER_ERROR" | "NETWORK_ERROR" | "VALIDATION_FAILED" | "INVALID_ARGUMENTS" | "CONFIRMATION_REQUIRED" | "NOT_AVAILABLE" | "CALL_FAILED";
+  | "SPEC_INVALID" | "SERVER_ERROR" | "NETWORK_ERROR" | "VALIDATION_FAILED" | "INVALID_ARGUMENTS" | "CONFIRMATION_REQUIRED" | "NOT_AVAILABLE" | "CALL_FAILED";
 
 export interface ErrorContext {
   /** One sentence on how to supply a credential on this transport. */
@@ -1151,6 +1140,7 @@ export function classifyError(error: unknown, context: ErrorContext = {}): { cod
     return { code: "NETWORK_ERROR", nextSteps: ["The API could not be reached (network, DNS, TLS or timeout). Retry once with backoff; do not loop."] };
   }
   const status = typeof e.status === "number" ? e.status : 0;
+  const body = e.body as { errors?: { code?: string; message?: string }[] } | undefined;
   const auth = context.authHint ? context.authHint.trim().replace(/[.]?$/, ".") : null;
   if (status === 401) {
     return context.hadCredential
@@ -1163,6 +1153,15 @@ export function classifyError(error: unknown, context: ErrorContext = {}): { cod
   if (status === 429) {
     const retryAfter = extractRetryAfter(e);
     return { code: "RATE_LIMITED", nextSteps: [retryAfter ? "Wait " + retryAfter + " seconds, then call again." : "Back off and retry once; the request was already retried with the server's Retry-After."] };
+  }
+  if (status === 422 && body?.errors?.[0]?.code === "spec_error") {
+    return {
+      code: "SPEC_INVALID",
+      nextSteps: [
+        "The API rejected the spec it was given; its error message names the invalid part.",
+        context.docsUrl ? "Use search_docs with the error message, fix the spec, then call again." : "Fix the spec, then call again.",
+      ],
+    };
   }
   if (status === 400 || status === 409 || status === 413 || status === 422) {
     return { code: "INVALID_REQUEST", nextSteps: ["Read body for the field the API named, fix that argument and call again."] };
@@ -1189,13 +1188,18 @@ function notFoundNextSteps(message: string, body: unknown): string[] {
 /** A typed API error as the agent should see it: name, a stable code, the
  * message, status, the API's body, where to read more, and what to do. */
 export function errorOutcome(error: unknown, context: ErrorContext = {}): ToolOutcome {
-  const e = error as { name?: string; message?: string; status?: number; body?: unknown };
+  const e = error as { name?: string; message?: string; status?: number; body?: unknown; response?: { requestId?: string } };
   const { code, nextSteps } = classifyError(error, context);
+  const bodyRequestId = e?.body && typeof e.body === "object" && !Array.isArray(e.body)
+    ? (e.body as Record<string, unknown>).request_id ?? (e.body as Record<string, unknown>).requestId
+    : undefined;
+  const requestId = e?.response?.requestId ?? (typeof bodyRequestId === "string" ? bodyRequestId : undefined);
   const structured = {
     error: e?.name ?? "Error",
     code,
     message: e?.message,
     ...(typeof e?.status === "number" ? { status: e.status } : {}),
+    ...(requestId ? { request_id: requestId } : {}),
     ...(e?.body !== undefined ? { body: e.body } : {}),
     ...(context.docsUrl ? { docs_url: context.docsUrl } : {}),
     next_steps: nextSteps,
@@ -1218,27 +1222,8 @@ export interface DocsSource {
   fetchText(url: string): Promise<string | null>;
 }
 
-function docsPageUrl(source: DocsSource, pathOrFile: string): string | null {
-  const base = source.docsUrl();
-  if (base === null) return null;
-  try {
-    const baseUrl = new URL(base);
-    if (baseUrl.protocol !== "https:" && baseUrl.protocol !== "http:") return null;
-    const target = /^https?:\/\//.test(pathOrFile)
-      ? new URL(pathOrFile)
-      : new URL(pathOrFile.replace(/^\/+/, ""), baseUrl.toString().replace(/\/+$/, "") + "/");
-    // llms.txt commonly contains absolute links, but a docs tool is not a
-    // general-purpose URL fetcher. Keeping every page on the configured
-    // origin prevents an agent from turning hosted MCP into an SSRF proxy.
-    if (target.origin !== baseUrl.origin || target.username || target.password) return null;
-    return target.toString();
-  } catch {
-    return null;
-  }
-}
-
 async function fetchDocs(source: DocsSource, pathOrFile: string): Promise<string | null> {
-  const url = docsPageUrl(source, pathOrFile);
+  const url = resolveDocsPageUrl(source.docsUrl(), pathOrFile);
   return url === null ? null : source.fetchText(url);
 }
 
@@ -1306,7 +1291,8 @@ export function searchScore(op: OpLike, query: string): number {
 }
 
 export async function docsSearch(source: DocsSource, query: string, page = 1): Promise<ToolOutcome> {
-  const term = query.toLowerCase();
+  const term = query.trim().toLowerCase();
+  const terms = searchTerms(query);
   const sections: string[] = [];
   const ranked = source.ops
     .map((op) => ({ op, score: searchScore(op, query) }))
@@ -1325,14 +1311,27 @@ export async function docsSearch(source: DocsSource, query: string, page = 1): P
   const prose = await fetchDocs(source, "llms-full.txt");
   if (prose !== null) {
     let heading = "";
-    const proseMatches: string[] = [];
+    const proseMatches: { heading: string; excerpt: string; score: number }[] = [];
     for (const line of prose.split("\n")) {
       if (/^#{1,3} /.test(line)) heading = line.replace(/^#+ /, "").trim();
-      else if (line.toLowerCase().includes(term) && proseMatches.length < 15) {
-        proseMatches.push("- [" + heading + "] " + line.trim().slice(0, 160));
+      else {
+        const lowerHeading = heading.toLowerCase();
+        const lowerLine = line.toLowerCase();
+        const matched = terms.filter((word) => lowerHeading.includes(word) || lowerLine.includes(word));
+        if (matched.length > 0) {
+          const allTerms = matched.length === terms.length;
+          proseMatches.push({
+            heading,
+            excerpt: line.trim().slice(0, 160),
+            score: matched.length * 10 + (allTerms ? 50 : 0) + (lowerHeading.includes(term) || lowerLine.includes(term) ? 25 : 0),
+          });
+        }
       }
     }
-    if (proseMatches.length > 0) sections.push("Guide matches:\n" + proseMatches.join("\n"));
+    proseMatches.sort((a, b) => b.score - a.score || a.heading.localeCompare(b.heading) || a.excerpt.localeCompare(b.excerpt));
+    if (proseMatches.length > 0) {
+      sections.push("Guide matches (best first):\n" + proseMatches.slice(0, 15).map((match) => "- [" + match.heading + "] " + match.excerpt).join("\n"));
+    }
   }
   if (sections.length === 0) {
     return {
@@ -1399,53 +1398,4 @@ export async function callSharedTool(
     return runOperation(target, opArgs);
   }
   return undefined;
-}
-
-/** A fetch for docs pages: markdown preferred, same-origin redirects only,
- * a 10s deadline, and a 2 MB streaming cap. The caller already constrained
- * the first URL to its configured docs origin; redirects must not escape it. */
-export const MAX_DOCS_TEXT_BYTES = 2_000_000;
-export async function fetchDocsText(url: string): Promise<string | null> {
-  try {
-    const allowedOrigin = new URL(url).origin;
-    let current = url;
-    const signal = AbortSignal.timeout(10_000);
-    for (let redirects = 0; redirects <= 3; redirects += 1) {
-      const response = await fetch(current, {
-        headers: { Accept: "text/markdown, text/plain, */*" },
-        redirect: "manual",
-        signal,
-      });
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get("location");
-        if (!location || redirects === 3) return null;
-        const next = new URL(location, current);
-        if (next.origin !== allowedOrigin || next.username || next.password) return null;
-        current = next.toString();
-        continue;
-      }
-      if (!response.ok) return null;
-      const declared = Number(response.headers.get("content-length"));
-      if (Number.isFinite(declared) && declared > MAX_DOCS_TEXT_BYTES) return null;
-      if (!response.body) return "";
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let bytes = 0;
-      let text = "";
-      for (;;) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        bytes += chunk.value.byteLength;
-        if (bytes > MAX_DOCS_TEXT_BYTES) {
-          await reader.cancel();
-          return null;
-        }
-        text += decoder.decode(chunk.value, { stream: true });
-      }
-      return text + decoder.decode();
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }
