@@ -21,7 +21,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TypeshipClient, formatDebugEvent, type ClientOptions, type DebugEvent } from "./index.js";
-import { GLOBALS, OPS, buildArgs, type OpSpec } from "./ops.js";
+import { GLOBALS, OMITTED_OPS, OPS, buildArgs, type OpSpec } from "./ops.js";
 import {
   DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
   dataOutcome, errorOutcome, handleRpc, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, serverInstructions,
@@ -33,7 +33,7 @@ import { fetchDocsText } from "./docs.js";
 const BIN = "typeship";
 const PKG_NAME = "@typeship-ax/mcp";
 const SERVER_NAME = "typeship-mcp";
-const SERVER_VERSION = "0.7.0";
+const SERVER_VERSION = "0.8.0";
 /** The MCP client's announced name (clientInfo in request _meta), for the User-Agent. */
 let MCP_CLIENT_NAME: string | null = null;
 function noteClientInfo(message: unknown): void {
@@ -47,6 +47,7 @@ const BASIC: { envUser: string; envPass: string } | null = null;
 
 const ENVIRONMENTS: Record<string, string> = {};
 const DOCS_URL_DEFAULT: string | null = "https://typeship.dev";
+const DOCS_INDEX_URL_DEFAULT: string | null = null;
 /** "meta" collapses per-operation tools into search/read/execute so huge
  * APIs don't flood agent context with hundreds of tools. */
 const TOOL_MODE: "operations" | "meta" = "meta";
@@ -214,7 +215,10 @@ function saveBinary(bytes: Uint8Array, _mediaType: string, suggestedName: string
 
 const docsSource: DocsSource = {
   ops: MCP_OPS as unknown as OpLike[],
+  omittedOps: OMITTED_OPS as unknown as OpLike[],
+  generatedOperationCount: OPS.length,
   docsUrl: () => readJson<{ docsUrl?: string }>("config.json")?.docsUrl ?? DOCS_URL_DEFAULT,
+  docsIndexUrl: () => readJson<{ docsUrl?: string }>("config.json")?.docsUrl ? null : DOCS_INDEX_URL_DEFAULT,
   fetchText: fetchDocsText,
 };
 
@@ -227,6 +231,8 @@ function serverFor(authHeader?: string): McpServer {
     instructions: serverInstructions({
       title: "typeship",
       toolCount: MCP_OPS.length,
+      generatedOperationCount: OPS.length,
+      omittedOps: docsSource.omittedOps,
       mode: TOOL_MODE,
       readOnly: READ_ONLY,
       hiddenWrites: HIDDEN_WRITES,
@@ -236,7 +242,7 @@ function serverFor(authHeader?: string): McpServer {
       custom: CUSTOM_INSTRUCTIONS,
     }),
     toolsTtlMs: TOOLS_TTL_MS,
-    listTools: () => toolDefinitions(docsSource.ops, TOOL_MODE),
+    listTools: () => toolDefinitions(docsSource.ops, TOOL_MODE, docsSource.omittedOps),
     unknownToolMessage: TOOL_MODE === "meta"
       ? (name) => "Unknown tool: " + name + ". This server uses compact mode; call search_docs to discover an operation, then call execute with operation: \"" + name + "\"."
       : undefined,

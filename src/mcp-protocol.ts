@@ -16,7 +16,7 @@
  */
 
 import { dateKindOf, relativeDate } from "./dates.js";
-import { resolveDocsPageUrl } from "./docs.js";
+import { resolveDocsContentUrl } from "./docs.js";
 
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 /** Revisions served. Legacy (initialize-handshake) revisions are not; an
@@ -401,7 +401,16 @@ export function exampleFromSchema(schema: unknown, field = "value", depth = 0): 
   if (node.example !== undefined) return node.example;
   if (Array.isArray(node.examples) && node.examples.length > 0) return node.examples[0];
   if (node.default !== undefined) return node.default;
-  if (Array.isArray(node.enum) && node.enum.length > 0) return node.enum.find((v) => v !== null) ?? node.enum[0];
+  if (Array.isArray(node.enum) && node.enum.length > 0) {
+    if (typeof node.pattern === "string") {
+      try {
+        const pattern = new RegExp(node.pattern);
+        const matching = node.enum.find((value) => typeof value === "string" && pattern.test(value));
+        if (matching !== undefined) return matching;
+      } catch { /* malformed patterns are ignored for examples */ }
+    }
+    return node.enum.find((v) => v !== null) ?? node.enum[0];
+  }
   const variants = (Array.isArray(node.oneOf) ? node.oneOf : Array.isArray(node.anyOf) ? node.anyOf : null) as unknown[] | null;
   if (variants) {
     const useful = variants.find((v) => v && typeof v === "object" && (v as Record<string, unknown>).type !== "null") ?? variants[0];
@@ -437,7 +446,10 @@ export function exampleFromSchema(schema: unknown, field = "value", depth = 0): 
   if (type === "string" || type === undefined) {
     const format = typeof node.format === "string" ? node.format : "";
     const lower = field.toLowerCase();
-    let value = format === "date-time" ? "2026-01-15T12:00:00Z"
+    const min = typeof node.minLength === "number" ? node.minLength : 0;
+    const max = typeof node.maxLength === "number" ? node.maxLength : undefined;
+    const patterned = typeof node.pattern === "string" ? exampleMatchingPattern(node.pattern, min, max) : null;
+    let value = patterned ?? (format === "date-time" ? "2026-01-15T12:00:00Z"
       : format === "date" ? "2026-01-15"
       : format === "email" || lower.includes("email") ? "person@example.com"
       : (format === "uri" || format === "url" || lower.endsWith("url")) && (lower.includes("webhook") || lower.includes("callback")) ? "https://example.com/webhook"
@@ -448,11 +460,35 @@ export function exampleFromSchema(schema: unknown, field = "value", depth = 0): 
       : lower.includes("version") ? "1.0.0"
       : /(^|_)id$|Id$/.test(field) ? (lower === "id" ? "id" : field.replace(/[_-]?id$/i, "")) + "_123"
       : lower.includes("name") ? "example"
-      : "value";
-    const min = typeof node.minLength === "number" ? node.minLength : 0;
+      : "value");
     while (value.length < min) value += "x";
-    if (typeof node.maxLength === "number") value = value.slice(0, node.maxLength);
+    if (max !== undefined) value = value.slice(0, max);
     return value;
+  }
+  return null;
+}
+
+/** A useful value for the common API-id pattern (`^agt_`, `^src_[a-z0-9]+$`).
+ * Full regex generation would be surprising and heavyweight; an anchored
+ * literal prefix plus ordinary id suffix covers the schemas that use a
+ * pattern to communicate a typed identifier. Every candidate is checked by
+ * the actual RegExp before it is returned. */
+function exampleMatchingPattern(pattern: string, minLength: number, maxLength?: number): string | null {
+  let regex: RegExp;
+  try { regex = new RegExp(pattern); } catch { return null; }
+  const match = /^\^((?:\\.|[A-Za-z0-9_-])+)/.exec(pattern);
+  const prefix = match?.[1]?.replace(/\\(.)/g, "$1") ?? "";
+  const fit = (candidate: string): string => {
+    let value = candidate;
+    while (value.length < minLength) value += "x";
+    if (maxLength !== undefined) value = value.slice(0, maxLength);
+    return value;
+  };
+  const candidates = [prefix + "123", prefix + "example", prefix, "example", "value"];
+  for (const candidate of candidates) {
+    const value = fit(candidate);
+    regex.lastIndex = 0;
+    if (regex.test(value)) return value;
   }
   return null;
 }
@@ -528,7 +564,7 @@ export const EXECUTE_TOOL: ToolDefinition = {
   inputSchema: {
     type: "object",
     properties: {
-      operation: { type: "string", description: "Operation tool name, e.g. accounts_create" },
+      operation: { type: "string", description: "Operation tool name returned by search_docs" },
       arguments: { type: "object", description: "Operation arguments keyed by parameter name" },
       confirm: { type: "boolean", description: "Required and must be true for destructive operations. Omit for reads and ordinary writes." },
     },
@@ -574,12 +610,18 @@ export function parseIncludeList(value: string | undefined | null): string[] | u
  * three-tool "meta" shape (search_docs, read_docs, execute) that keeps huge
  * APIs from flooding an agent's context. Deterministic order.
  */
-export function toolDefinitions(ops: OpLike[], mode: "operations" | "meta"): ToolDefinition[] {
+export function toolDefinitions(ops: OpLike[], mode: "operations" | "meta", omittedOps: OpLike[] = []): ToolDefinition[] {
   if (mode === "meta") {
+    const execute = structuredClone(EXECUTE_TOOL);
+    const operation = (execute.inputSchema.properties as Record<string, Record<string, unknown>>).operation!;
+    if (ops[0]) operation.examples = [ops[0].tool];
+    const coverage = omittedOps.length > 0
+      ? " Generated " + ops.length + " of " + (ops.length + omittedOps.length) + " operations; search_docs names operations omitted by the plan limit."
+      : "";
     return [
-      { ...SEARCH_DOCS_TOOL, description: "Search this API's " + ops.length + " operations and, when a docs site is configured, its guides. Start here to find the operation you need." },
+      { ...SEARCH_DOCS_TOOL, description: "Search this API's " + ops.length + " generated operations and, when a docs site is configured, its guides. Start here to find the operation you need." + coverage },
       { ...READ_DOCS_TOOL, description: "Read an operation's full reference (arguments, schemas, authentication, safety and example) by tool name, or a docs-site guide page." },
-      EXECUTE_TOOL,
+      execute,
     ];
   }
   return [...ops.map(operationTool), SEARCH_DOCS_TOOL, READ_DOCS_TOOL];
@@ -603,6 +645,10 @@ export interface InstructionsInput {
   title: string;
   /** Operations the server serves (after read-only / include filtering). */
   toolCount: number;
+  /** Operations present in the Definition but absent from this capped generation. */
+  omittedOps?: OpLike[];
+  /** Count generated before read-only or include filters narrow this server. */
+  generatedOperationCount?: number;
   mode: "operations" | "meta";
   readOnly?: boolean;
   /** Write operations hidden by read-only mode. */
@@ -625,6 +671,10 @@ export function serverInstructions(input: InstructionsInput): string {
   parts.push(input.mode === "meta"
     ? input.title + " as MCP tools: search_docs, read_docs and execute over " + input.toolCount + " operations. Start with search_docs to find an operation, read_docs <tool> for its full argument reference, then execute it by name. Destructive operations require confirm: true on execute."
     : input.title + " as MCP tools: one tool per operation (" + input.toolCount + "), plus search_docs to find operations and read_docs <tool> for an operation's full argument reference.");
+  if (input.omittedOps?.length) {
+    const generated = input.generatedOperationCount ?? input.toolCount;
+    parts.push("Plan-limited generation: generated " + generated + " of " + (generated + input.omittedOps.length) + " operations. Omitted operations: " + input.omittedOps.map((op) => op.tool + " (" + op.httpMethod + " " + op.path + ")").join(", ") + ". Calling or searching for one returns PLAN_LIMIT with upgrade next_steps.");
+  }
   parts.push("Arguments use the API's wire names; an unknown, mistyped or missing argument returns an isError result listing each problem (nothing is dropped silently), and obvious forms are coerced (\"true\" to boolean, \"3\" to number, enum case).");
   parts.push("Paginated tools return items, hasMore and nextPage (the exact arguments for the following page). Pass fields (dotted paths) to keep only the result keys you need; oversized results are cut to whole items or keys with a truncated note saying how to ask for less.");
   parts.push("Errors carry error, code, message, status, the API's body and next_steps.");
@@ -1216,15 +1266,42 @@ export function textError(text: string, code: ErrorCode = "CALL_FAILED", nextSte
 
 export interface DocsSource {
   ops: OpLike[];
+  /** Operations omitted from a capped generation. */
+  omittedOps?: OpLike[];
+  /** Count generated before runtime surface filters. */
+  generatedOperationCount?: number;
   /** Base URL of the docs site, or null when none is configured. */
   docsUrl(): string | null;
+  /** Exact llms.txt URL when it is not at <docsUrl>/llms.txt. */
+  docsIndexUrl?(): string | null;
   /** Fetch a URL's text, or null on any failure. */
   fetchText(url: string): Promise<string | null>;
 }
 
 async function fetchDocs(source: DocsSource, pathOrFile: string): Promise<string | null> {
-  const url = resolveDocsPageUrl(source.docsUrl(), pathOrFile);
+  const url = resolveDocsContentUrl(source.docsUrl(), source.docsIndexUrl?.() ?? null, pathOrFile);
   return url === null ? null : source.fetchText(url);
+}
+
+function coverageText(source: DocsSource): string | null {
+  const omitted = source.omittedOps ?? [];
+  const generated = source.generatedOperationCount ?? source.ops.length;
+  return omitted.length > 0
+    ? "Coverage: generated " + generated + " of " + (generated + omitted.length) + " operations. Omitted by the plan limit: " + omitted.map((op) => op.tool + " (" + op.httpMethod + " " + op.path + ")").join(", ") + "."
+    : null;
+}
+
+function omittedPlanLimit(ops: OpLike[], requested?: string): ToolOutcome {
+  const structured = {
+    error: "PlanLimitError",
+    code: "PLAN_LIMIT",
+    message: requested
+      ? "The operation " + requested + " exists in the API Definition but was omitted from this generated package by its plan limit."
+      : "Matching operations exist in the API Definition but were omitted from this generated package by its plan limit.",
+    omitted_operations: ops.map((op) => ({ tool: op.tool, method: op.httpMethod, path: op.path })),
+    next_steps: ["Upgrade at https://typeship.dev/pricing and regenerate the package without the operation cap.", "Do not invent or retry an omitted operation against this generated package."],
+  };
+  return { text: JSON.stringify(structured), isError: true, structured };
 }
 
 export function referenceText(op: OpLike): string {
@@ -1298,6 +1375,12 @@ export async function docsSearch(source: DocsSource, query: string, page = 1): P
     .map((op) => ({ op, score: searchScore(op, query) }))
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score || a.op.tool.localeCompare(b.op.tool));
+  const omittedRanked = (source.omittedOps ?? [])
+    .map((op) => ({ op, score: searchScore(op, query) }))
+    .filter((result) => result.score > 0)
+    .sort((a, b) => b.score - a.score || a.op.tool.localeCompare(b.op.tool));
+  const exactOmitted = findOperation(source.omittedOps ?? [], query);
+  if (exactOmitted) return omittedPlanLimit([exactOmitted], exactOmitted.tool);
   const pageIndex = Math.max(1, Math.floor(page)) - 1;
   const slice = ranked.slice(pageIndex * SEARCH_PAGE_SIZE, (pageIndex + 1) * SEARCH_PAGE_SIZE);
   if (slice.length > 0) {
@@ -1309,6 +1392,7 @@ export async function docsSearch(source: DocsSource, query: string, page = 1): P
     sections.push("No reference matches on page " + (pageIndex + 1) + "; there are " + Math.ceil(ranked.length / SEARCH_PAGE_SIZE) + " pages.");
   }
   const prose = await fetchDocs(source, "llms-full.txt");
+  let proseMatchCount = 0;
   if (prose !== null) {
     let heading = "";
     const proseMatches: { heading: string; excerpt: string; score: number }[] = [];
@@ -1329,22 +1413,33 @@ export async function docsSearch(source: DocsSource, query: string, page = 1): P
       }
     }
     proseMatches.sort((a, b) => b.score - a.score || a.heading.localeCompare(b.heading) || a.excerpt.localeCompare(b.excerpt));
+    proseMatchCount = proseMatches.length;
     if (proseMatches.length > 0) {
       sections.push("Guide matches (best first):\n" + proseMatches.slice(0, 15).map((match) => "- [" + match.heading + "] " + match.excerpt).join("\n"));
     }
   }
+  if (omittedRanked.length > 0 && ranked.length === 0 && proseMatchCount === 0) {
+    return omittedPlanLimit(omittedRanked.map((result) => result.op));
+  }
+  if (omittedRanked.length > 0) {
+    sections.push("Operations omitted by the plan limit:\n" + omittedRanked.slice(0, SEARCH_PAGE_SIZE).map((result) => "- " + result.op.tool + ": " + (result.op.summary ?? result.op.httpMethod + " " + result.op.path)).join("\n"));
+  }
+  const coverage = coverageText(source);
   if (sections.length === 0) {
     return {
-      text: "No matches for: " + query + (source.docsUrl() === null ? " (no docs site configured; only the API reference was searched)" : ""),
+      text: (coverage ? coverage + "\n\n" : "") + "No matches for: " + query + (source.docsUrl() === null && (source.docsIndexUrl?.() ?? null) === null ? " (a docs URL was not provided at generate time; only the API reference was searched)" : ""),
       isError: false,
     };
   }
-  return { text: sections.join("\n\n"), isError: false };
+  return { text: [...(coverage ? [coverage] : []), ...sections].join("\n\n"), isError: false };
 }
 
 export async function docsRead(source: DocsSource, page: string): Promise<ToolOutcome> {
   const opMatch = findOperation(source.ops, page);
-  if (opMatch) return { text: referenceText(opMatch), isError: false };
+  const coverage = coverageText(source);
+  if (opMatch) return { text: [...(coverage ? [coverage] : []), referenceText(opMatch)].join("\n\n"), isError: false };
+  const omittedMatch = findOperation(source.omittedOps ?? [], page);
+  if (omittedMatch) return omittedPlanLimit([omittedMatch], omittedMatch.tool);
   let target = page;
   if (!/^https?:\/\//.test(target)) {
     const index = await fetchDocs(source, "llms.txt");
@@ -1354,11 +1449,11 @@ export async function docsRead(source: DocsSource, page: string): Promise<ToolOu
   }
   const text = await fetchDocs(source, target);
   if (text === null) {
-    return textError(source.docsUrl() === null
-      ? "No docs site is configured for this server, and no operation matches \"" + page + "\"."
+    return textError(source.docsUrl() === null && (source.docsIndexUrl?.() ?? null) === null
+      ? "A docs URL was not provided at generate time, and no generated operation matches \"" + page + "\"."
       : "Couldn't fetch \"" + page + "\". Use search_docs to find pages.", "NOT_FOUND", ["search_docs finds operations and guide pages."]);
   }
-  return { text, isError: false };
+  return { text: [...(coverage ? [coverage] : []), text].join("\n\n"), isError: false };
 }
 
 /**
@@ -1384,7 +1479,12 @@ export async function callSharedTool(
   if (name === "execute") {
     if (typeof args.operation !== "string") return argumentsError({ tool: name }, [{ code: "MISSING_ARGUMENT", argument: "operation", message: "execute requires an operation name." }]);
     const target = findOperation(source.ops, args.operation);
-    if (!target) return textError("Unknown operation: " + args.operation + ".", "NOT_FOUND", ["search_docs finds operations by name, path or description."]);
+    if (!target) {
+      const omitted = findOperation(source.omittedOps ?? [], args.operation);
+      return omitted
+        ? omittedPlanLimit([omitted], omitted.tool)
+        : textError("Unknown operation: " + args.operation + ".", "NOT_FOUND", ["search_docs finds operations by name, path or description."]);
+    }
     if (operationSafety(target) === "destructive" && args.confirm !== true) {
       return textError(
         "The destructive operation " + target.tool + " requires explicit confirmation.",
