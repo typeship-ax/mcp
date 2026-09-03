@@ -93,7 +93,14 @@ export interface OpLike {
   /** GraphQL ops accept a raw selection-set override. */
   select: boolean;
   graphql?: { kind: string };
-  params: { name: string; type: string; required: boolean; enum?: string[]; description?: string }[];
+  params: {
+    name: string;
+    type: string;
+    required: boolean;
+    enum?: string[];
+    description?: string;
+    resolve?: false | ReferenceResolver;
+  }[];
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
   /** Canonical effect classification shared by generated docs, CLI, and MCP. */
@@ -108,6 +115,16 @@ export interface OpLike {
   sse?: boolean;
   /** Wire encoding of the request body. */
   bodyKind?: string | null;
+}
+
+/** Fully proved lookup metadata carried in ops.ts / the hosted manifest. */
+export interface ReferenceResolver {
+  via: string;
+  match: string[];
+  id: string;
+  idPattern?: string;
+  filterParam?: string;
+  inferred?: boolean;
 }
 
 /** Does the operation take a file (multipart form or raw binary body)? */
@@ -643,6 +660,8 @@ export function missingArguments(op: OpLike, args: Record<string, unknown>): str
 
 export interface InstructionsInput {
   title: string;
+  /** Callable operations, used to advertise only capabilities the surface has. */
+  ops: OpLike[];
   /** Operations the server serves (after read-only / include filtering). */
   toolCount: number;
   /** Operations present in the Definition but absent from this capped generation. */
@@ -657,6 +676,8 @@ export interface InstructionsInput {
   authHint?: string | null;
   /** The tool that returns the caller (the CLI's whoami target), when the API has one. */
   identityTool?: string | null;
+  /** At least one argument accepts an exact human reference as well as an ID. */
+  referenceResolution?: boolean;
   /** Upload operations are exposed (local server): their file arguments take paths. */
   uploads?: boolean;
   /** Project-supplied text, appended verbatim. */
@@ -676,6 +697,10 @@ export function serverInstructions(input: InstructionsInput): string {
     parts.push("Plan-limited generation: generated " + generated + " of " + (generated + input.omittedOps.length) + " operations. Omitted operations: " + input.omittedOps.map((op) => op.tool + " (" + op.httpMethod + " " + op.path + ")").join(", ") + ". Calling or searching for one returns PLAN_LIMIT with upgrade next_steps.");
   }
   parts.push("Arguments use the API's wire names; an unknown, mistyped or missing argument returns an isError result listing each problem (nothing is dropped silently), and obvious forms are coerced (\"true\" to boolean, \"3\" to number, enum case).");
+  if (input.referenceResolution) parts.push("Reference arguments marked in their schema accept either an ID or an exact case-insensitive name, slug, key or email; the server resolves one match through the named list tool, reports multiple candidates, and never guesses fuzzily.");
+  if (input.identityTool && input.ops.some((op) => op.params.some((param) => param.type === "string" && param.resolve !== false && userShapedReference(param.name)))) {
+    parts.push("User-shaped reference arguments also accept \"me\", resolved through " + input.identityTool + ".");
+  }
   parts.push("Paginated tools return items, hasMore and nextPage (the exact arguments for the following page). Pass fields (dotted paths) to keep only the result keys you need; oversized results are cut to whole items or keys with a truncated note saying how to ask for less.");
   parts.push("Errors carry error, code, message, status, the API's body and next_steps.");
   if (input.authHint) parts.push(input.authHint.trim().replace(/[.]?$/, "."));
@@ -901,6 +926,194 @@ export function prepareCall(
 
   if (issues.length > 0) return { ok: false, outcome: argumentsError(op, issues) };
   return { ok: true, call: { args, fields, maxChars: options.maxChars ?? DEFAULT_MAX_RESULT_CHARS } };
+}
+
+/** One caller/session's resolved names. Hosted transports must scope this
+ * map by caller credential; generated stdio servers naturally have one map
+ * per process. */
+export type ReferenceCache = Map<string, string | number>;
+
+export interface ResolveReferencesOptions {
+  /** Operations available to act as declared/inferred resolvers. */
+  ops: OpLike[];
+  /** Operation returning the authenticated caller, for user-shaped "me". */
+  identityTool?: string | null;
+  cache: ReferenceCache;
+  /** Raw operation runner: validates and calls, but does not resolve again. */
+  runOperation(op: OpLike, args: Record<string, unknown>): Promise<ToolOutcome>;
+  /** Hard bound for list scans. Default 5. */
+  maxPages?: number;
+}
+
+export type ResolveReferencesResult =
+  | { ok: true; args: Record<string, unknown> }
+  | { ok: false; outcome: ToolOutcome };
+
+function referenceError(
+  code: "REFERENCE_NOT_FOUND" | "REFERENCE_AMBIGUOUS" | "REFERENCE_SCAN_LIMIT" | "NOT_AVAILABLE",
+  message: string,
+  argument: string,
+  nextSteps: string[],
+  candidates?: Record<string, unknown>[],
+): ToolOutcome {
+  const structured = {
+    error: code === "REFERENCE_NOT_FOUND" ? "ReferenceNotFound" : code === "REFERENCE_AMBIGUOUS" ? "AmbiguousReference" : code === "REFERENCE_SCAN_LIMIT" ? "ReferenceScanLimit" : "ReferenceResolutionUnavailable",
+    code,
+    message,
+    argument,
+    ...(candidates ? { candidates } : {}),
+    next_steps: nextSteps,
+  };
+  return { text: JSON.stringify(structured), isError: true, structured };
+}
+
+function outcomeValue(outcome: ToolOutcome): unknown {
+  if (outcome.structured !== undefined) return outcome.structured;
+  try { return JSON.parse(outcome.text); } catch { return undefined; }
+}
+
+function referencePage(value: unknown): { items: Record<string, unknown>[]; nextPage: Record<string, unknown> | null } | null {
+  if (Array.isArray(value)) {
+    return { items: value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)), nextPage: null };
+  }
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const direct = Array.isArray(record.items) ? record.items : undefined;
+  const arrays = direct ? [direct] : Object.entries(record)
+    .filter(([name, entry]) => name !== "request_id" && name !== "requestId" && Array.isArray(entry))
+    .map(([, entry]) => entry as unknown[]);
+  if (arrays.length !== 1) return null;
+  return {
+    items: arrays[0]!.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)),
+    nextPage: record.nextPage && typeof record.nextPage === "object" && !Array.isArray(record.nextPage)
+      ? record.nextPage as Record<string, unknown>
+      : null,
+  };
+}
+
+function userShapedReference(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/id$/, "");
+  return ["user", "assignee", "owner", "member", "actor", "creator", "account", "profile"].includes(normalized);
+}
+
+function referenceMatchLabel(fields: string[]): string {
+  return fields.length === 1 ? fields[0]! : fields.slice(0, -1).join(", ") + " or " + fields.at(-1);
+}
+
+function looksLikeIdentifier(value: string, resolver: ReferenceResolver): boolean {
+  if (/\s/.test(value)) return false;
+  if (resolver.idPattern !== undefined) {
+    try { return new RegExp(resolver.idPattern).test(value); } catch { return false; }
+  }
+  return /^\d+$/.test(value) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
+    /^[a-z][a-z0-9]*_[a-z0-9][a-z0-9_-]*$/i.test(value) ||
+    /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(value) ||
+    /^[A-Za-z0-9_-]{20,}$/.test(value);
+}
+
+function putReferenceCache(cache: ReferenceCache, key: string, value: string | number): void {
+  cache.set(key, value);
+  while (cache.size > 256) cache.delete(cache.keys().next().value!);
+}
+
+function candidateRecord(item: Record<string, unknown>, resolver: ReferenceResolver): Record<string, unknown> {
+  return Object.fromEntries([resolver.id, ...resolver.match]
+    .filter((name, index, all) => all.indexOf(name) === index && item[name] !== undefined)
+    .map((name) => [name, item[name]]));
+}
+
+/** Resolve every eligible reference after validation/coercion and before the
+ * requested API call. Matching is exact (case-insensitive for strings),
+ * never fuzzy. Zero matches fail before the requested API call. */
+export async function resolveReferences(
+  op: OpLike,
+  preparedArgs: Record<string, unknown>,
+  options: ResolveReferencesOptions,
+): Promise<ResolveReferencesResult> {
+  const args = { ...preparedArgs };
+  const maxPages = Math.max(1, Math.floor(options.maxPages ?? 5));
+  for (const param of op.params) {
+    const raw = args[param.name];
+    if (typeof raw !== "string" || param.resolve === false) continue;
+    const value = raw.trim();
+
+    if (value.toLowerCase() === "me" && userShapedReference(param.name) && options.identityTool) {
+      const identity = findOperation(options.ops, options.identityTool);
+      if (identity) {
+        const cacheKey = "me:" + identity.tool;
+        const cached = options.cache.get(cacheKey);
+        if (cached !== undefined) {
+          args[param.name] = cached;
+          continue;
+        }
+        const outcome = await options.runOperation(identity, {});
+        if (outcome.isError) return { ok: false, outcome };
+        const body = outcomeValue(outcome);
+        const id = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).id : undefined;
+        if (typeof id !== "string" && typeof id !== "number") {
+          return { ok: false, outcome: referenceError("NOT_AVAILABLE", `${identity.tool} did not return a top-level id, so "me" cannot be resolved for ${param.name}.`, param.name, ["Pass the caller's exact ID instead."]) };
+        }
+        putReferenceCache(options.cache, cacheKey, id);
+        args[param.name] = id;
+        continue;
+      }
+    }
+
+    const resolver = param.resolve && typeof param.resolve === "object" ? param.resolve : undefined;
+    if (!resolver || looksLikeIdentifier(value, resolver)) continue;
+    const source = findOperation(options.ops, resolver.via);
+    if (!source) continue;
+    const cacheKey = source.tool + ":" + resolver.id + ":" + resolver.match.join(",") + ":" + value.toLowerCase();
+    const cached = options.cache.get(cacheKey);
+    if (cached !== undefined) {
+      args[param.name] = cached;
+      continue;
+    }
+
+    const matches = new Map<string, { id: string | number; item: Record<string, unknown> }>();
+    let pageArgs: Record<string, unknown> = {};
+    for (const sourceParam of source.params) {
+      if (args[sourceParam.name] !== undefined && sourceParam.name !== param.name) pageArgs[sourceParam.name] = args[sourceParam.name];
+    }
+    if (resolver.filterParam) pageArgs[resolver.filterParam] = value;
+    if (!hasOwnFieldsParam(source)) pageArgs.fields = [resolver.id, ...resolver.match];
+
+    let exhausted = false;
+    for (let pageNumber = 1; pageNumber <= maxPages; pageNumber++) {
+      const outcome = await options.runOperation(source, pageArgs);
+      if (outcome.isError) return { ok: false, outcome };
+      const page = referencePage(outcomeValue(outcome));
+      if (!page) {
+        return { ok: false, outcome: referenceError("NOT_AVAILABLE", `${source.tool} did not return one recognizable item array, so ${param.name} cannot be resolved by name.`, param.name, ["Pass the exact ID instead.", `Check the resolver hint for ${source.tool}.`]) };
+      }
+      for (const item of page.items) {
+        const id = item[resolver.id];
+        if (typeof id !== "string" && typeof id !== "number") continue;
+        const hit = resolver.match.some((field) => typeof item[field] === "string" && (item[field] as string).toLowerCase() === value.toLowerCase());
+        if (hit) matches.set(typeof id + ":" + String(id), { id, item });
+      }
+      if (matches.size > 1) {
+        const candidates = [...matches.values()].map(({ item }) => candidateRecord(item, resolver));
+        return { ok: false, outcome: referenceError("REFERENCE_AMBIGUOUS", `${JSON.stringify(raw)} matches multiple candidates for ${param.name}; nothing was sent to ${op.tool}.`, param.name, ["Choose one candidate ID and call again."], candidates) };
+      }
+      if (!page.nextPage) {
+        exhausted = true;
+        break;
+      }
+      pageArgs = { ...pageArgs, ...page.nextPage };
+    }
+    if (!exhausted) {
+      return { ok: false, outcome: referenceError("REFERENCE_SCAN_LIMIT", `${source.tool} still had more results after ${maxPages} pages, so ${JSON.stringify(raw)} could not be resolved unambiguously.`, param.name, ["Pass the exact ID instead.", `Narrow ${source.tool} with its filters, or declare a more selective resolver.`]) };
+    }
+    const match = [...matches.values()][0];
+    if (!match) {
+      return { ok: false, outcome: referenceError("REFERENCE_NOT_FOUND", `${JSON.stringify(raw)} did not exactly match any ${referenceMatchLabel(resolver.match)} from ${source.tool}; nothing was sent to ${op.tool}.`, param.name, [`Call ${source.tool} to choose an exact ${referenceMatchLabel(resolver.match)} or ID, then call again.`]) };
+    }
+    putReferenceCache(options.cache, cacheKey, match.id);
+    args[param.name] = match.id;
+  }
+  return { ok: true, args };
 }
 
 /** The isError result for bad arguments: one stable code, one issue per
@@ -1162,7 +1375,8 @@ export async function binaryOutcome(blob: Blob, options: BinaryOptions = {}): Pr
  * generated CLI's error envelope). Additive only. */
 export type ErrorCode =
   | "NO_AUTH" | "AUTH_INVALID" | "PLAN_LIMIT" | "NOT_FOUND" | "INVALID_REQUEST" | "RATE_LIMITED"
-  | "SPEC_INVALID" | "SERVER_ERROR" | "NETWORK_ERROR" | "VALIDATION_FAILED" | "INVALID_ARGUMENTS" | "CONFIRMATION_REQUIRED" | "NOT_AVAILABLE" | "CALL_FAILED";
+  | "SPEC_INVALID" | "SERVER_ERROR" | "NETWORK_ERROR" | "VALIDATION_FAILED" | "INVALID_ARGUMENTS" | "CONFIRMATION_REQUIRED"
+  | "REFERENCE_NOT_FOUND" | "REFERENCE_AMBIGUOUS" | "REFERENCE_SCAN_LIMIT" | "NOT_AVAILABLE" | "CALL_FAILED";
 
 export interface ErrorContext {
   /** One sentence on how to supply a credential on this transport. */
