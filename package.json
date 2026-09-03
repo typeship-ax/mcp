@@ -27,12 +27,15 @@
     "src",
     "api.md",
     "api.json",
+    "server.json",
     "LICENSE"
   ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test tests/*.test.mjs",
+    "mcp:validate": "mcp-publisher validate server.json",
+    "mcp:publish": "mcp-publisher publish server.json",
     "prepublishOnly": "npm run build"
   },
   "engines": {
