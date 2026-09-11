@@ -5,17 +5,18 @@
 // live in ./mcp-protocol.js, shared with typeship's hosted endpoint. Two
 // transports, zero dependencies:
 //   node mcp.js            stdio (newline-delimited JSON-RPC 2.0)
-//   node mcp.js --http     Streamable HTTP on PORT (default 3000)
+//   createMcpHandler()    configured Streamable HTTP handler
 // Surface switches (flags or environment):
 //   --read-only / TYPESHIP_MCP_READ_ONLY=1     reads only; writes are not callable
 //   --tools a,b / TYPESHIP_MCP_TOOLS=a,b       only these resources or tools
 //   TYPESHIP_MCP_MAX_RESULT_CHARS=<n>          result size cap (default 64000)
-// handleHttp() is exported for serverless/worker runtimes.
-// In HTTP mode an incoming Authorization header is forwarded to the
-// upstream API (per-request passthrough); stdio resolves auth from the
+// The bare handleHttp()/--http entry stays closed until a handler is configured.
+// HTTP validates a dedicated MCP token and resolves API credentials through
+// createMcpHandler's application-owned callback; stdio resolves auth from the
 // environment, then from credentials/config saved by the CLI's `login`
 // and `config` commands (same files, so one login covers both bins).
 
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -23,25 +24,34 @@ import { fileURLToPath } from "node:url";
 import { TypeshipClient, formatDebugEvent, type ClientOptions, type DebugEvent } from "./index.js";
 import { GLOBALS, OMITTED_OPS, OPS, buildArgs, type OpSpec } from "./ops.js";
 import {
-  DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
-  dataOutcome, errorOutcome, handleRpc, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, serverInstructions,
+  DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, McpAccountLinkRequired, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
+  dataOutcome, errorOutcome, handleRpc, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, resolveReferences, serverInstructions,
   takeCancelled, textError, toolDefinitions, visibleOps,
   type ArgumentIssue, type DocsSource, type McpServer, type OpLike, type RpcOutcome, type ToolOutcome,
 } from "./mcp-protocol.js";
 import { fetchDocsText } from "./docs.js";
+import { assertCredentialDestination, assertStoredIdentity, oauthSessionToken } from "./oauth-session.js";
+import { createCredentialStore } from "./credential-storage.js";
+import { identityPolicyOf, verifyClientIdentity, type IdentityConfiguration } from "./api-identity.js";
+import { parseNamedCredentials, resolveNamedCredentials, namedCredentialAvailability, type NamedCredentials, type CredentialSchemes } from "./named-credentials.js";
+import { resolveProfile, profileFlag, readProfileConfig } from "./auth-profiles.js";
+import { createMcpAuthorizer, McpAuthorizationError, type McpAuthorizationConfiguration, type McpTokenIntrospectionConfiguration, type McpPrincipal } from "./mcp-authorization.js";
+export type { McpAuthorizationConfiguration, McpTokenIntrospectionConfiguration, McpPrincipal } from "./mcp-authorization.js";
+export { McpAccountLinkRequired } from "./mcp-protocol.js";
 
 const BIN = "typeship";
 const PKG_NAME = "@typeship-ax/mcp";
 const SERVER_NAME = "typeship-mcp";
-const SERVER_VERSION = "0.8.0";
+const SERVER_VERSION = "0.9.0";
 /** The MCP client's announced name (clientInfo in request _meta), for the User-Agent. */
 let MCP_CLIENT_NAME: string | null = null;
 function noteClientInfo(message: unknown): void {
   const meta = (message as { params?: { _meta?: Record<string, { name?: unknown }> } } | null)?.params?._meta;
   const name = meta?.["io.modelcontextprotocol/clientInfo"]?.name;
-  if (typeof name === "string" && name && name !== MCP_CLIENT_NAME) { MCP_CLIENT_NAME = name.slice(0, 60); clientInstance = undefined; }
+  if (typeof name === "string" && name && name !== MCP_CLIENT_NAME) { MCP_CLIENT_NAME = name.slice(0, 60); }
 }
 const DEFAULT_BASE_URL = "https://typeship.dev/api/v1";
+const NAMED_SCHEMES: CredentialSchemes = {"apiKey":{"kind":"bearer","options":["bearerToken"]}};
 const AUTH_SCALARS: { option: string; flag: string; env: string }[] = [{"option":"bearerToken","flag":"token","env":"TYPESHIP_TOKEN"}];
 const BASIC: { envUser: string; envPass: string } | null = null;
 
@@ -51,8 +61,6 @@ const DOCS_INDEX_URL_DEFAULT: string | null = null;
 /** "meta" collapses per-operation tools into search/read/execute so huge
  * APIs don't flood agent context with hundreds of tools. */
 const TOOL_MODE: "operations" | "meta" = "meta";
-/** Authorization server for OAuth discovery (RFC 9728), from the spec. */
-const OAUTH_ISSUER: string | null = null;
 /** Project-supplied guidance appended to the server instructions. */
 const CUSTOM_INSTRUCTIONS: string | null = null;
 /** The tool that returns the caller (the CLI's whoami target), named in the instructions. */
@@ -65,17 +73,20 @@ const INCLUDE = parseIncludeList(ARGV.includes("--tools") ? ARGV[ARGV.indexOf("-
 const MAX_RESULT_CHARS = Number(process.env["TYPESHIP_MCP_MAX_RESULT_CHARS"]) || DEFAULT_MAX_RESULT_CHARS;
 /** One sentence on where credentials come from on each transport; goes
  * into the instructions and into 401 results. */
-const AUTH_HINT_STDIO = "Credentials come from the MCP server's environment (TYPESHIP_TOKEN) or from 'typeship login'";
-const AUTH_HINT_HTTP = "Send the API credential as the Authorization header of each MCP request; it is forwarded to the API as is";
+const AUTH_HINT_STDIO = "Credentials come from the MCP server's environment (TYPESHIP_CREDENTIALS, TYPESHIP_TOKEN) or from 'typeship login'";
+const AUTH_HINT_HTTP = "Sign in to this MCP server. The server resolves your API credentials separately; its connection token is never forwarded to the API.";
 /** The tool list is fixed at generation, so clients may cache it for an
  * hour and shared caches may hold it (identical for every caller). */
 const TOOLS_TTL_MS = 60 * 60 * 1000;
 
-function configDir(): string {
+function configRoot(): string {
   return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), BIN);
 }
 
+function configDir(): string { return resolveProfile(configRoot(), { flag: profileFlag(ARGV), environment: process.env["TYPESHIP_PROFILE"] }).directory; }
+
 function readJson<T>(file: string): T | null {
+  if (!LOCAL_CREDENTIALS) return null;
   try {
     return JSON.parse(readFileSync(join(configDir(), file), "utf8")) as T;
   } catch {
@@ -83,13 +94,21 @@ function readJson<T>(file: string): T | null {
   }
 }
 
-function makeClient(): TypeshipClient {
-  const stored = readJson<{
-    scalars?: Record<string, string>;
-    basic?: { username: string; password: string };
-    oauth?: { accessToken: string };
-  }>("credentials.json");
-  const config = readJson<{ baseUrl?: string; environment?: string }>("config.json");
+function makeClient(op: OpSpec): TypeshipClient {
+  const profile = LOCAL_CREDENTIALS ? resolveProfile(configRoot(), { flag: profileFlag(ARGV), environment: process.env["TYPESHIP_PROFILE"] }) : null;
+  const store = createCredentialStore(profile?.directory ?? configRoot(), process.env["TYPESHIP_CREDENTIAL_STORE"], "TYPESHIP_CREDENTIAL_STORE");
+  if (BASIC && (process.env[BASIC.envUser] !== undefined) !== (process.env[BASIC.envPass] !== undefined)) throw new Error("Supply both Basic-auth environment variables together, or use a complete named Basic credential.");
+  const envNamed = LOCAL_CREDENTIALS && process.env["TYPESHIP_CREDENTIALS"] !== undefined ? parseNamedCredentials(process.env["TYPESHIP_CREDENTIALS"], NAMED_SCHEMES) : {};
+  const explicitOptions = new Set(AUTH_SCALARS.filter((a) => process.env[a.env] !== undefined).map((a) => a.option));
+  if (BASIC && process.env[BASIC.envUser] !== undefined && process.env[BASIC.envPass] !== undefined) explicitOptions.add("basicAuth");
+
+  namedCredentialAvailability(NAMED_SCHEMES, explicitOptions, envNamed);
+  const identityPolicy = {};
+  const identityOp = OPS.find((candidate) => candidate.tool === IDENTITY_TOOL);
+  const identity: IdentityConfiguration | undefined = identityOp && Object.keys(identityPolicy).length ? { operation: identityOp.resource + "." + identityOp.method, fields: identityPolicy } : undefined;
+  const explicitCredentials = op.credentialOptions?.some((alternative) => alternative.length > 0 && alternative.every((option) => explicitOptions.has(option)));
+  const stored = op.auth !== "none" && LOCAL_CREDENTIALS && !explicitCredentials ? store.read() : null;
+  const config = profile ? readProfileConfig(profile.directory) : {};
   const baseUrl = process.env["TYPESHIP_BASE_URL"]
     ?? config?.baseUrl
     ?? (config?.environment !== undefined ? ENVIRONMENTS[config.environment] : undefined)
@@ -99,6 +118,7 @@ function makeClient(): TypeshipClient {
     // instead of a server that vanished mid-conversation.
     throw new Error("No base URL configured: set TYPESHIP_BASE_URL in the MCP server's environment, or run '" + BIN + " config set base-url <url>'.");
   }
+  if (stored) { assertCredentialDestination(stored, { apiBaseUrl: baseUrl, environment: config.environment, profile: profile?.name }); assertStoredIdentity(stored, identity); }
   const options: ClientOptions & Record<string, unknown> = { baseUrl };
   for (const a of AUTH_SCALARS) {
     const v = process.env[a.env] ?? stored?.scalars?.[a.option];
@@ -109,10 +129,15 @@ function makeClient(): TypeshipClient {
     const password = process.env[BASIC.envPass] ?? stored?.basic?.password;
     if (username !== undefined && password !== undefined) options.basicAuth = { username, password };
   }
+  const envOptions: Record<string, unknown> = {};
+  for (const a of AUTH_SCALARS) if (process.env[a.env] !== undefined) envOptions[a.option] = process.env[a.env];
+  if (BASIC && process.env[BASIC.envUser] !== undefined && process.env[BASIC.envPass] !== undefined) envOptions.basicAuth = { username: process.env[BASIC.envUser], password: process.env[BASIC.envPass] };
+  options.credentials = resolveNamedCredentials(NAMED_SCHEMES, [
+    { named: stored?.named, options: { ...stored?.scalars, ...(stored?.basic ? { basicAuth: stored.basic } : {}) } },
+    { named: envNamed, options: envOptions },
+  ]);
 
-  if (options.bearerToken === undefined && stored?.oauth?.accessToken !== undefined) {
-    options.bearerToken = stored.oauth.accessToken;
-  }
+
   for (const g of GLOBALS) {
     const value = process.env["TYPESHIP_" + g.envSuffix];
     if (value !== undefined) options[g.option] = value;
@@ -122,17 +147,27 @@ function makeClient(): TypeshipClient {
   }
   // The local MCP server identifies itself (surface + the client it serves, when announced).
   options.defaultHeaders = { "User-Agent": PKG_NAME + "-mcp/" + SERVER_VERSION + " (typeship" + (MCP_CLIENT_NAME ? "; client=" + MCP_CLIENT_NAME : "") + ")" };
-  return new TypeshipClient(options);
+  // Keep the SDK's machine-token cache while re-evaluating local configuration.
+  const key = createHash("sha256").update(JSON.stringify([options, config, profile?.name, stored?.oauth?.sessionId, null, process.env["TYPESHIP_DEBUG"]])).digest("hex");
+  if (clientInstance && clientKey === key) return clientInstance;
+  const client = new TypeshipClient(options);
+  clientKey = key;
+  CLIENT_CREDENTIALS.set(client, Object.keys(options.credentials ?? {}).length > 0 || AUTH_SCALARS.some((a) => options[a.option] !== undefined) || options.basicAuth !== undefined || options.bearerToken !== undefined || options.clientCredentials !== undefined);
+  return (clientInstance = client);
 }
 
 let clientInstance: TypeshipClient | undefined;
-function getClient(): TypeshipClient {
-  return (clientInstance ??= makeClient());
+let clientKey = "";
+const CLIENT_CREDENTIALS = new WeakMap<TypeshipClient, boolean>();
+
+/** Resolve configuration and credentials for each tool call, including login/logout changes. */
+function getClient(op: OpSpec): TypeshipClient {
+  return makeClient(op);
 }
 
 /** Run one operation through the generated SDK: the same client, the same
  * typed errors and pagination a hand-written caller would get. */
-async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, authHeader?: string): Promise<ToolOutcome> {
+async function callOperationRaw(op: OpSpec, rawArgs: Record<string, unknown>, remote: RemoteContext | undefined, client: TypeshipClient): Promise<ToolOutcome> {
   // Arguments are checked against the tool's schema first: unknown names,
   // wrong types and missing requirements come back as one isError result,
   // nothing reaches the API half-formed and nothing is dropped silently.
@@ -147,7 +182,7 @@ async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, authH
   // argument errors, reported before anything is sent.
   const fileIssues: ArgumentIssue[] = [];
   let rawBody: unknown = op.bodyStyle === "data" ? args.body : undefined;
-  if (LOCAL_PROCESS) {
+  if (LOCAL_PROCESS && !remote) {
     for (const p of op.params) {
       if (p.type !== "file" || typeof values[p.name] !== "string") continue;
       try { values[p.name] = fileArgument(values[p.name] as string); } catch (e) { fileIssues.push({ code: "INVALID_ARGUMENT", argument: p.name, message: p.name + ": cannot read " + String(values[p.name]) + " (" + (e as Error).message + ")" }); }
@@ -163,15 +198,14 @@ async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, authH
     rawBody,
     typeof args.select === "string" ? args.select : undefined,
   );
-  if (authHeader) callArgs.push({ headers: { Authorization: authHeader } });
   const errorContext = {
-    authHint: authHeader !== undefined ? AUTH_HINT_HTTP : AUTH_HINT_STDIO,
+    authHint: remote ? AUTH_HINT_HTTP : AUTH_HINT_STDIO,
     docsUrl: docsSource.docsUrl(),
-    hadCredential: authHeader !== undefined || AUTH_SCALARS.some((a) => process.env[a.env] !== undefined) || readJson<{ scalars?: unknown; oauth?: unknown; basic?: unknown }>("credentials.json") !== null,
+    hadCredential: !!remote || CLIENT_CREDENTIALS.get(client) === true,
   };
   const shape = { fields, maxChars, pagination: op.pagination, args };
   try {
-    const target = (getClient() as unknown as Record<string, Record<string, (...a: unknown[]) => unknown>>)[op.resource]!;
+    const target = (client as unknown as Record<string, Record<string, (...a: unknown[]) => unknown>>)[op.resource]!;
     const result = await (target[op.method]!(...callArgs) as Promise<{ ok: boolean; data?: unknown; error?: unknown; response?: { requestId?: string } }>);
     if (!result.ok) return errorOutcome(result.error, errorContext);
     if (op.paginated) {
@@ -180,17 +214,57 @@ async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, authH
     }
     // A binary body (the SDK hands back a Blob): an image block, or a file
     // on disk, never "{}".
-    if (result.data instanceof Blob) return binaryOutcome(result.data, { tool: op.tool, ...(LOCAL_PROCESS ? { saveBinary } : {}) });
+    if (result.data instanceof Blob) return binaryOutcome(result.data, { tool: op.tool, ...(LOCAL_PROCESS && !remote ? { saveBinary } : {}) });
     return dataOutcome(result.data, shape);
   } catch (e) {
     return textError((e as Error).message ?? "Tool call failed");
   }
 }
 
+/** Name-or-ID resolution is the one wrapper around the ordinary executor,
+ * so a direct operation tool and compact execute take exactly the same path. */
+const REFERENCE_CACHES = new Map<string, Map<string, string | number>>();
+function referenceCacheFor(authHeader?: string): Map<string, string | number> {
+  const key = createHash("sha256").update(JSON.stringify([authHeader ?? "stdio", clientKey])).digest("hex");
+  let cache = REFERENCE_CACHES.get(key);
+  if (!cache) {
+    cache = new Map();
+    REFERENCE_CACHES.set(key, cache);
+    while (REFERENCE_CACHES.size > 16) REFERENCE_CACHES.delete(REFERENCE_CACHES.keys().next().value!);
+  }
+  return cache;
+}
+
+async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, remote?: RemoteContext): Promise<ToolOutcome> {
+  const prepared = prepareCall(op as unknown as OpLike, rawArgs, { maxChars: MAX_RESULT_CHARS });
+  if (!prepared.ok) return prepared.outcome;
+  // One client/session for the entire tool, including name-to-ID lookups.
+  // If login changes during a lookup, the token callback rejects the old session.
+  let client: TypeshipClient;
+  try { client = remote ? await remote.client() : getClient(op); } catch (error) {
+    if (remote && error instanceof McpAccountLinkRequired) throw error;
+    return textError(remote ? "API access is unavailable for this MCP account. Reconnect your API account or contact the server owner." : (error as Error).message);
+  }
+  const resolved = await resolveReferences(op as unknown as OpLike, prepared.call.args, {
+    ops: OPS as unknown as OpLike[],
+    identityTool: IDENTITY_TOOL,
+    cache: remote?.references ?? referenceCacheFor(),
+    runOperation: (source, args) => callOperationRaw(source as OpSpec, args, remote, client),
+  });
+  if (!resolved.ok) return resolved.outcome;
+  const args = {
+    ...resolved.args,
+    ...(prepared.call.fields ? { fields: prepared.call.fields.map((path) => path.join(".")) } : {}),
+  };
+  return callOperationRaw(op, args, remote, client);
+}
+
 /** Running as a process on this machine (stdio, or --http launched here),
  * as opposed to imported by a worker: the server can read and write local
  * files, so uploads are tools and binaries are saved to disk. */
 const LOCAL_PROCESS = invokedDirectly();
+/** Saved human sessions are available only to local stdio, never HTTP/worker callers. */
+const LOCAL_CREDENTIALS = LOCAL_PROCESS && !ARGV.includes("--http");
 /** The callable operations: event streams are CLI-only, uploads are tools
  * only on a local server (mcpExposed), writes are out under --read-only,
  * and --tools narrows to a subset. A hidden operation is unknown to
@@ -222,39 +296,44 @@ const docsSource: DocsSource = {
   fetchText: fetchDocsText,
 };
 
-/** The MCP server for one request context (the HTTP transport passes the
- * caller's Authorization through; stdio has none). */
-function serverFor(authHeader?: string): McpServer {
+/** One validated remote identity and API client per HTTP request. */
+interface RemoteContext { client(): Promise<TypeshipClient>; references: Map<string, string | number> }
+
+function serverFor(remote?: RemoteContext): McpServer {
+  const operations = remote ? visibleOps(MCP_OPS as unknown as OpLike[], { uploads: false }) : MCP_OPS as unknown as OpLike[];
+  const source = remote ? { ...docsSource, ops: operations } : docsSource;
   const website = docsSource.docsUrl();
   return {
     serverInfo: { name: SERVER_NAME, title: "typeship", version: SERVER_VERSION, ...(website ? { websiteUrl: website } : {}) },
     instructions: serverInstructions({
       title: "typeship",
-      toolCount: MCP_OPS.length,
+      ops: operations,
+      toolCount: operations.length,
       generatedOperationCount: OPS.length,
       omittedOps: docsSource.omittedOps,
       mode: TOOL_MODE,
       readOnly: READ_ONLY,
       hiddenWrites: HIDDEN_WRITES,
-      authHint: authHeader !== undefined ? AUTH_HINT_HTTP : AUTH_HINT_STDIO,
+      authHint: remote ? AUTH_HINT_HTTP : AUTH_HINT_STDIO,
       identityTool: MCP_OPS.some((o) => o.tool === IDENTITY_TOOL) ? IDENTITY_TOOL : null,
-      uploads: HAS_UPLOADS,
+      referenceResolution: MCP_OPS.some((o) => o.params.some((p) => p.resolve && typeof p.resolve === "object")),
+      uploads: !remote && HAS_UPLOADS,
       custom: CUSTOM_INSTRUCTIONS,
     }),
     toolsTtlMs: TOOLS_TTL_MS,
-    listTools: () => toolDefinitions(docsSource.ops, TOOL_MODE, docsSource.omittedOps),
+    listTools: () => toolDefinitions(source.ops, TOOL_MODE, source.omittedOps),
     unknownToolMessage: TOOL_MODE === "meta"
       ? (name) => "Unknown tool: " + name + ". This server uses compact mode; call search_docs to discover an operation, then call execute with operation: \"" + name + "\"."
       : undefined,
     callTool: async (name, args) => {
-      const shared = await callSharedTool(name, args, docsSource, (op, opArgs) => callOperation(op as OpSpec, opArgs, authHeader));
+      const shared = await callSharedTool(name, args, source, (op, opArgs) => callOperation(op as OpSpec, opArgs, remote));
       if (shared !== undefined) return shared;
       // tools/list is the callable contract. In meta mode every operation
       // goes through execute, including its destructive-operation
       // confirmation gate; an unlisted operation name must stay unknown.
       if (TOOL_MODE !== "operations") return undefined;
-      const op = MCP_OPS.find((o) => o.tool === name);
-      return op ? callOperation(op, args, authHeader) : undefined;
+      const op = operations.find((o) => o.tool === name);
+      return op ? callOperation(op as OpSpec, args, remote) : undefined;
     },
   };
 }
@@ -266,15 +345,15 @@ function serverFor(authHeader?: string): McpServer {
  * validating the header when present (DNS-rebinding defense), so browser
  * callers must be same-host, localhost, or listed in
  * TYPESHIP_MCP_ALLOWED_ORIGINS (comma-separated, "*" for any). */
-function originAllowed(request: Request): boolean {
+function originAllowed(request: Request, resourceOrigin: string): boolean {
   const origin = request.headers.get("origin");
   if (origin === null) return true;
   const allowed = (process.env["TYPESHIP_MCP_ALLOWED_ORIGINS"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (allowed.includes("*") || allowed.includes(origin)) return true;
   try {
     const o = new URL(origin);
-    if (o.host === new URL(request.url).host) return true;
-    return ["localhost", "127.0.0.1", "[::1]"].includes(o.hostname);
+    if (o.origin === resourceOrigin) return true;
+    return ["localhost", "127.0.0.1", "[::1]"].includes(new URL(resourceOrigin).hostname) && ["localhost", "127.0.0.1", "[::1]"].includes(o.hostname);
   } catch {
     return false;
   }
@@ -283,50 +362,85 @@ function originAllowed(request: Request): boolean {
 function corsHeaders(request: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": request.headers.get("origin") ?? "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Expose-Headers": "WWW-Authenticate",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
     Vary: "Origin",
   };
 }
 
-function protectedResourceMetadata(origin: string): Record<string, unknown> {
-  return {
-    resource: origin,
-    ...(OAUTH_ISSUER ? { authorization_servers: [OAUTH_ISSUER] } : {}),
-    bearer_methods_supported: ["header"],
-  };
+export interface McpHttpOptions {
+  authorization?: McpAuthorizationConfiguration;
+  /** Optional server-only introspection. When set, checks every token with the
+   * provider instead of local JWT verification. Never put secrets in config. */
+  introspection?: McpTokenIntrospectionConfiguration;
+  /** Application-owned lookup or token exchange for this verified identity.
+   * Keep it outside the generated directory so regeneration preserves it.
+   * Throw McpAccountLinkRequired with a public linking page when the user
+   * needs to connect an account. Always verify the link server-side on retry.
+   * The MCP access token and request headers are deliberately not provided. */
+  credentialsFor(principal: McpPrincipal): ClientOptions | Promise<ClientOptions>;
 }
 
-/** Fetch-style handler: mount in any runtime (workers, serverless, node).
- * Never rejects: every failure is an HTTP or JSON-RPC error response. */
-export async function handleHttp(request: Request): Promise<Response> {
+/** Create once at startup; metadata/key caching is isolated to this server. */
+export function createMcpHandler(options: McpHttpOptions): (request: Request) => Promise<Response> {
+  const configured = {} as { mcpIssuer?: string | null; mcpResource?: string | null; mcpJwksUrl?: string | null; mcpScopes?: string[] | null };
+  const apiBaseUrl = process.env["TYPESHIP_BASE_URL"] ?? DEFAULT_BASE_URL ?? undefined;
+  const authorizer = createMcpAuthorizer(options.authorization ?? { issuer: configured.mcpIssuer ?? "", resource: configured.mcpResource ?? "", ...(configured.mcpJwksUrl ? { jwksUrl: configured.mcpJwksUrl } : {}), scopes: configured.mcpScopes ?? [] }, options.introspection);
+  if (typeof options.credentialsFor !== "function") throw new Error("Provide credentialsFor to resolve each MCP caller's upstream API credentials.");
+  return (request) => authorizedHttp(request, authorizer, options.credentialsFor, apiBaseUrl).catch(() => new Response(JSON.stringify({ error: "MCP request failed." }), { status: 500, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }));
+}
+
+/** A generated entry point cannot infer the host application's user-to-API
+ * credential mapping. It remains closed until the owner installs a handler. */
+export async function handleHttp(_request: Request): Promise<Response> {
+  return new Response(JSON.stringify({ error: "Configure createMcpHandler with MCP authorization and credentialsFor before serving remote requests." }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+}
+
+async function authorizedHttp(request: Request, authorizer: ReturnType<typeof createMcpAuthorizer>, credentialsFor: McpHttpOptions["credentialsFor"], apiBaseUrl: string | undefined): Promise<Response> {
   const url = new URL(request.url);
-  const cors = corsHeaders(request);
+  const resource = new URL(authorizer.configuration.resource);
+  const cors = originAllowed(request, resource.origin) ? corsHeaders(request) : {};
   const json = (status: number, body: unknown, extra: Record<string, string> = {}) =>
-    new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json", ...extra } });
+    new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store", ...extra } });
 
   if (request.method === "OPTIONS") {
-    return new Response(null, { status: originAllowed(request) ? 204 : 403, headers: cors });
+    return new Response(null, { status: originAllowed(request, resource.origin) ? 204 : 403, headers: cors });
   }
-  if (!originAllowed(request)) {
+  if (!originAllowed(request, resource.origin)) {
     return json(403, { jsonrpc: "2.0", error: { code: -32600, message: "Origin not allowed. Set TYPESHIP_MCP_ALLOWED_ORIGINS to permit browser callers." } });
   }
-  if (url.pathname.endsWith("/.well-known/oauth-protected-resource")) {
-    return json(200, protectedResourceMetadata(url.origin));
-  }
+  const metadataPath = "/.well-known/oauth-protected-resource" + resource.pathname.replace(/\/$/, "");
+  if (url.pathname === metadataPath && request.method === "GET") return json(200, authorizer.metadata());
+  if (url.pathname !== resource.pathname) return json(404, { error: "Unknown MCP endpoint." });
   if (request.method !== "POST") {
     // GET streams, DELETE (session end) and Mcp-Session-Id belong to earlier
     // revisions; the spec asks modern-only servers to answer 405.
     return json(405, { error: "POST JSON-RPC messages to this endpoint (MCP " + SUPPORTED_PROTOCOL_VERSIONS[0] + ", stateless)." }, { Allow: "POST, OPTIONS" });
   }
 
-  const authHeader = request.headers.get("authorization") ?? undefined;
-  const envHasAuth = AUTH_SCALARS.some((a) => process.env[a.env] !== undefined);
-  if (OAUTH_ISSUER && !authHeader && !envHasAuth) {
-    return json(401, { error: "Authorization required." }, {
-      "WWW-Authenticate": 'Bearer resource_metadata="' + url.origin + '/.well-known/oauth-protected-resource"',
-    });
+  let principal: McpPrincipal;
+  try { principal = await authorizer.authorize(request.headers.get("authorization")); }
+  catch (error) {
+    const failure = error instanceof McpAuthorizationError ? error : new McpAuthorizationError(503, "authorization_unavailable");
+    return json(failure.status, { error: failure.code, message: failure.message }, failure.status === 503 ? {} : { "WWW-Authenticate": authorizer.challenge(failure.code === "insufficient_scope" ? "insufficient_scope" : "invalid_token") });
   }
+  let client: Promise<TypeshipClient> | undefined;
+  const remote: RemoteContext = { references: new Map(), client: () => client ??= (async () => {
+    const credentials = await credentialsFor(principal);
+    if (!credentials || typeof credentials !== "object") throw new Error("API credentials unavailable.");
+    const baseUrl = apiBaseUrl;
+    if (typeof baseUrl !== "string") throw new Error("Configure the upstream API URL.");
+    if (credentials.baseUrl !== undefined && credentials.baseUrl !== baseUrl) throw new Error("API credentials target a different API URL.");
+    const token = request.headers.get("authorization")!.slice(7);
+    const transport = credentials.fetch ?? fetch;
+    return new TypeshipClient({ ...credentials, baseUrl, fetch: async (input, init) => {
+      const headers = new Headers(init?.headers);
+      const destination = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      if ([...headers.values()].some(value => value === token || value === "Bearer " + token) || [...destination.searchParams.values()].includes(token)) throw new Error("An MCP connection token cannot authorize an upstream API request.");
+      return transport(input, init);
+    } });
+  })() };
 
   let incoming: unknown;
   try {
@@ -345,9 +459,9 @@ export async function handleHttp(request: Request): Promise<Response> {
   noteClientInfo(parsed);
   let outcome: RpcOutcome;
   try {
-    outcome = await handleRpc(serverFor(authHeader), parsed);
+    outcome = await handleRpc(serverFor(remote), parsed);
   } catch (e) {
-    return json(500, { jsonrpc: "2.0", id: parsed.id ?? null, error: { code: -32603, message: (e as Error).message ?? "Internal error" } });
+    return json(500, { jsonrpc: "2.0", id: parsed.id ?? null, error: { code: -32603, message: "Internal error" } });
   }
   if (outcome.message === null) {
     return new Response(null, { status: outcome.status, headers: cors });
@@ -417,7 +531,7 @@ async function startStdio(): Promise<void> {
       })
       .catch((e) => {
         if (id !== undefined) {
-          write({ jsonrpc: "2.0", id: id ?? null, error: { code: -32603, message: (e as Error).message ?? "Internal error" } });
+          write({ jsonrpc: "2.0", id: id ?? null, error: { code: -32603, message: "Internal error" } });
         }
       });
   });
