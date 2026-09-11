@@ -25,7 +25,7 @@ To run the local MCP server, configure your MCP client with `node` and the absol
 Generation does not publish a package. Before using the registry command below, confirm `name` and `version` in `package.json`, publish under a name you control, and verify that release is available on npm.
 
 ```sh
-npm install --global @typeship-ax/mcp@0.9.0
+npm install --global @typeship-ax/mcp@0.9.1
 ```
 
 ## Connect after publishing
@@ -50,15 +50,15 @@ Authentication: provide `TYPESHIP_TOKEN` through the MCP client's environment or
 
 ### Hosted
 
-- Claude Code: `claude mcp add --transport http typeship https://typeship.dev/mcp/e3xospsdztp1`
-- Codex: `codex mcp add typeship --url https://typeship.dev/mcp/e3xospsdztp1`
-- [Install in VS Code](vscode:mcp/install?%7B%22name%22%3A%22typeship%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ftypeship.dev%2Fmcp%2Fe3xospsdztp1%22%7D)
+- Claude Code: `claude mcp add --transport http typeship https://typeship.dev/mcp`
+- Codex: `codex mcp add typeship --url https://typeship.dev/mcp`
+- [Install in VS Code](vscode:mcp/install?%7B%22name%22%3A%22typeship%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ftypeship.dev%2Fmcp%22%7D)
 
 ### Hosted · read-only
 
-- Claude Code: `claude mcp add --transport http typeship-readonly https://typeship.dev/mcp/e3xospsdztp1/readonly`
-- Codex: `codex mcp add typeship-readonly --url https://typeship.dev/mcp/e3xospsdztp1/readonly`
-- [Install in VS Code](vscode:mcp/install?%7B%22name%22%3A%22typeship-readonly%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ftypeship.dev%2Fmcp%2Fe3xospsdztp1%2Freadonly%22%7D)
+- Claude Code: `claude mcp add --transport http typeship-readonly https://typeship.dev/mcp/readonly`
+- Codex: `codex mcp add typeship-readonly --url https://typeship.dev/mcp/readonly`
+- [Install in VS Code](vscode:mcp/install?%7B%22name%22%3A%22typeship-readonly%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ftypeship.dev%2Fmcp%2Freadonly%22%7D)
 
 ## MCP server
 
