@@ -8,15 +8,15 @@
     "url": "https://github.com/typeship-ax/mcp",
     "source": "github"
   },
-  "version": "0.9.0",
+  "version": "0.9.1",
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://typeship.dev/mcp/e3xospsdztp1"
+      "url": "https://typeship.dev/mcp"
     },
     {
       "type": "streamable-http",
-      "url": "https://typeship.dev/mcp/e3xospsdztp1/readonly"
+      "url": "https://typeship.dev/mcp/readonly"
     }
   ],
   "packages": [
@@ -24,7 +24,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@typeship-ax/mcp",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "transport": {
         "type": "stdio"
       },
