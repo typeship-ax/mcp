@@ -16,7 +16,7 @@
  */
 
 import { dateKindOf, relativeDate } from "./dates.js";
-import { resolveDocsContentUrl } from "./docs.js";
+import { docsReadTarget, resolveDocsContentUrl, searchConnectedGuides } from "./docs.js";
 
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 /** Revisions served. Legacy (initialize-handshake) revisions are not; an
@@ -77,6 +77,28 @@ export interface ToolOutcome {
   content?: ContentBlock[];
 }
 
+/** Throw only from an application-owned credential resolver, before calling
+ * the API. The URL must show a sign-in/linking page, never a pre-authenticated
+ * resource, token or personal information. The page must verify the same user
+ * before linking. The runtime rechecks credentials on every subsequent call. */
+export class McpAccountLinkRequired extends Error {
+  readonly url: string;
+  constructor(url: string) {
+    super("Connect your API account in the browser to continue.");
+    this.name = "McpAccountLinkRequired";
+    try {
+      const parsed = new URL(url);
+      if (url.length > 2048 || url !== url.trim() || /[\u0000-\u0020\u007F"\\]/.test(url) || parsed.username || parsed.password || parsed.hash ||
+        !(parsed.protocol === "https:" || parsed.protocol === "http:" && ["127.0.0.1", "[::1]", "localhost"].includes(parsed.hostname)) ||
+        [...parsed.searchParams.keys()].some(key => /^(access_token|refresh_token|client_secret|api_key|password|authorization)$/i.test(key))) throw new Error();
+    } catch { throw new Error("Provide a public HTTPS account-linking page without credentials or a fragment (HTTP loopback is allowed for development)."); }
+    this.url = url;
+    Object.freeze(this);
+  }
+}
+
+const API_LINK_INPUT = "typeship_api_account";
+
 /** The subset of an operation spec (ops.ts / the hosted manifest) the
  * protocol layer reads. */
 export interface OpLike {
@@ -93,7 +115,14 @@ export interface OpLike {
   /** GraphQL ops accept a raw selection-set override. */
   select: boolean;
   graphql?: { kind: string };
-  params: { name: string; type: string; required: boolean; enum?: string[]; description?: string }[];
+  params: {
+    name: string;
+    type: string;
+    required: boolean;
+    enum?: string[];
+    description?: string;
+    resolve?: false | ReferenceResolver;
+  }[];
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
   /** Canonical effect classification shared by generated docs, CLI, and MCP. */
@@ -108,6 +137,16 @@ export interface OpLike {
   sse?: boolean;
   /** Wire encoding of the request body. */
   bodyKind?: string | null;
+}
+
+/** Fully proved lookup metadata carried in ops.ts / the hosted manifest. */
+export interface ReferenceResolver {
+  via: string;
+  match: string[];
+  id: string;
+  idPattern?: string;
+  filterParam?: string;
+  inferred?: boolean;
 }
 
 /** Does the operation take a file (multipart form or raw binary body)? */
@@ -152,7 +191,8 @@ export interface McpServer {
   listTools(): ToolDefinition[];
   /**
    * Run a tool. Return undefined for an unknown tool (the client gets
-   * -32602), a ToolOutcome otherwise. Throwing yields -32603.
+   * -32602), a ToolOutcome otherwise. McpAccountLinkRequired requests a
+   * browser interaction; other exceptions yield -32603.
    */
   callTool(name: string, args: Record<string, unknown>): Promise<ToolOutcome | undefined>;
   /** Optional actionable wording for an unknown tool name. The protocol
@@ -312,10 +352,37 @@ export async function handleRpc(server: McpServer, incoming: unknown): Promise<R
       if (args === null || typeof args !== "object" || Array.isArray(args)) {
         return rpcError(id, -32602, "tools/call arguments must be an object", 400);
       }
+      const responses = request.params?.inputResponses;
+      if (responses !== undefined && (responses === null || typeof responses !== "object" || Array.isArray(responses))) return rpcError(id, -32602, "inputResponses must be an object", 400);
+      const response = responses && Object.hasOwn(responses, API_LINK_INPUT) ? (responses as Record<string, unknown>)[API_LINK_INPUT] : undefined;
+      if (response !== undefined) {
+        if (!response || typeof response !== "object" || Array.isArray(response) || !["accept", "decline", "cancel"].includes((response as { action: string }).action)) return rpcError(id, -32602, "Invalid API account-link response", 400);
+        if ((response as { action: string }).action !== "accept") {
+          const cancelled = textError("API account linking was cancelled. No API request was made.", "ACCOUNT_LINK_CANCELLED");
+          return complete({ content: [{ type: "text", text: cancelled.text }], isError: true });
+        }
+        // A client acknowledgment is not authorization. Only a fresh lookup
+        // of the server's linked credentials can let the operation proceed.
+      }
       const denied = server.beforeToolCall ? await server.beforeToolCall(name) : null;
       if (denied) return denied;
       const started = Date.now();
-      const outcome = await server.callTool(name, args);
+      let outcome: ToolOutcome | undefined;
+      try { outcome = await server.callTool(name, args); }
+      catch (error) {
+        if (!(error instanceof McpAccountLinkRequired)) throw error;
+        const caps = (request.params?._meta as Record<string, unknown>)[META_CLIENT_CAPS] as { elicitation?: { url?: unknown } };
+        const urlMode = caps.elicitation?.url;
+        if (urlMode === null || typeof urlMode !== "object" || Array.isArray(urlMode)) {
+          const unsupported = textError("Connect your API account using an MCP client that supports browser account-linking prompts (URL-mode elicitation), then retry.", "ACCOUNT_LINK_REQUIRED");
+          return complete({ content: [{ type: "text", text: unsupported.text }], isError: true });
+        }
+        return { status: 200, message: { jsonrpc: "2.0", id, result: {
+          resultType: "input_required",
+          inputRequests: { [API_LINK_INPUT]: { method: "elicitation/create", params: { mode: "url", url: error.url, message: "Connect your API account in the browser to continue." } } },
+          _meta: { [META_SERVER_INFO]: server.serverInfo },
+        } } };
+      }
       if (outcome === undefined) return rpcError(id, -32602, server.unknownToolMessage?.(name) ?? "Unknown tool: " + name, 400);
       if (server.afterToolCall) await server.afterToolCall(name, outcome, Date.now() - started);
       // A tool that declares an outputSchema MUST return structuredContent,
@@ -484,7 +551,7 @@ function exampleMatchingPattern(pattern: string, minLength: number, maxLength?: 
     if (maxLength !== undefined) value = value.slice(0, maxLength);
     return value;
   };
-  const candidates = [prefix + "123", prefix + "example", prefix, "example", "value"];
+  const candidates = [prefix + "123", prefix + "example", prefix, "resource.method", "example.value", "example_123", "example", "value"];
   for (const candidate of candidates) {
     const value = fit(candidate);
     regex.lastIndex = 0;
@@ -643,6 +710,8 @@ export function missingArguments(op: OpLike, args: Record<string, unknown>): str
 
 export interface InstructionsInput {
   title: string;
+  /** Callable operations, used to advertise only capabilities the surface has. */
+  ops: OpLike[];
   /** Operations the server serves (after read-only / include filtering). */
   toolCount: number;
   /** Operations present in the Definition but absent from this capped generation. */
@@ -657,6 +726,8 @@ export interface InstructionsInput {
   authHint?: string | null;
   /** The tool that returns the caller (the CLI's whoami target), when the API has one. */
   identityTool?: string | null;
+  /** At least one argument accepts an exact human reference as well as an ID. */
+  referenceResolution?: boolean;
   /** Upload operations are exposed (local server): their file arguments take paths. */
   uploads?: boolean;
   /** Project-supplied text, appended verbatim. */
@@ -676,6 +747,10 @@ export function serverInstructions(input: InstructionsInput): string {
     parts.push("Plan-limited generation: generated " + generated + " of " + (generated + input.omittedOps.length) + " operations. Omitted operations: " + input.omittedOps.map((op) => op.tool + " (" + op.httpMethod + " " + op.path + ")").join(", ") + ". Calling or searching for one returns PLAN_LIMIT with upgrade next_steps.");
   }
   parts.push("Arguments use the API's wire names; an unknown, mistyped or missing argument returns an isError result listing each problem (nothing is dropped silently), and obvious forms are coerced (\"true\" to boolean, \"3\" to number, enum case).");
+  if (input.referenceResolution) parts.push("Reference arguments marked in their schema accept either an ID or an exact case-insensitive name, slug, key or email; the server resolves one match through the named list tool, reports multiple candidates, and never guesses fuzzily.");
+  if (input.identityTool && input.ops.some((op) => op.params.some((param) => param.type === "string" && param.resolve !== false && userShapedReference(param.name)))) {
+    parts.push("User-shaped reference arguments also accept \"me\", resolved through " + input.identityTool + ".");
+  }
   parts.push("Paginated tools return items, hasMore and nextPage (the exact arguments for the following page). Pass fields (dotted paths) to keep only the result keys you need; oversized results are cut to whole items or keys with a truncated note saying how to ask for less.");
   parts.push("Errors carry error, code, message, status, the API's body and next_steps.");
   if (input.authHint) parts.push(input.authHint.trim().replace(/[.]?$/, "."));
@@ -901,6 +976,194 @@ export function prepareCall(
 
   if (issues.length > 0) return { ok: false, outcome: argumentsError(op, issues) };
   return { ok: true, call: { args, fields, maxChars: options.maxChars ?? DEFAULT_MAX_RESULT_CHARS } };
+}
+
+/** One caller/session's resolved names. Hosted transports must scope this
+ * map by caller credential; generated stdio servers naturally have one map
+ * per process. */
+export type ReferenceCache = Map<string, string | number>;
+
+export interface ResolveReferencesOptions {
+  /** Operations available to act as declared/inferred resolvers. */
+  ops: OpLike[];
+  /** Operation returning the authenticated caller, for user-shaped "me". */
+  identityTool?: string | null;
+  cache: ReferenceCache;
+  /** Raw operation runner: validates and calls, but does not resolve again. */
+  runOperation(op: OpLike, args: Record<string, unknown>): Promise<ToolOutcome>;
+  /** Hard bound for list scans. Default 5. */
+  maxPages?: number;
+}
+
+export type ResolveReferencesResult =
+  | { ok: true; args: Record<string, unknown> }
+  | { ok: false; outcome: ToolOutcome };
+
+function referenceError(
+  code: "REFERENCE_NOT_FOUND" | "REFERENCE_AMBIGUOUS" | "REFERENCE_SCAN_LIMIT" | "NOT_AVAILABLE",
+  message: string,
+  argument: string,
+  nextSteps: string[],
+  candidates?: Record<string, unknown>[],
+): ToolOutcome {
+  const structured = {
+    error: code === "REFERENCE_NOT_FOUND" ? "ReferenceNotFound" : code === "REFERENCE_AMBIGUOUS" ? "AmbiguousReference" : code === "REFERENCE_SCAN_LIMIT" ? "ReferenceScanLimit" : "ReferenceResolutionUnavailable",
+    code,
+    message,
+    argument,
+    ...(candidates ? { candidates } : {}),
+    next_steps: nextSteps,
+  };
+  return { text: JSON.stringify(structured), isError: true, structured };
+}
+
+function outcomeValue(outcome: ToolOutcome): unknown {
+  if (outcome.structured !== undefined) return outcome.structured;
+  try { return JSON.parse(outcome.text); } catch { return undefined; }
+}
+
+function referencePage(value: unknown): { items: Record<string, unknown>[]; nextPage: Record<string, unknown> | null } | null {
+  if (Array.isArray(value)) {
+    return { items: value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)), nextPage: null };
+  }
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const direct = Array.isArray(record.items) ? record.items : undefined;
+  const arrays = direct ? [direct] : Object.entries(record)
+    .filter(([name, entry]) => name !== "request_id" && name !== "requestId" && Array.isArray(entry))
+    .map(([, entry]) => entry as unknown[]);
+  if (arrays.length !== 1) return null;
+  return {
+    items: arrays[0]!.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)),
+    nextPage: record.nextPage && typeof record.nextPage === "object" && !Array.isArray(record.nextPage)
+      ? record.nextPage as Record<string, unknown>
+      : null,
+  };
+}
+
+function userShapedReference(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/id$/, "");
+  return ["user", "assignee", "owner", "member", "actor", "creator", "account", "profile"].includes(normalized);
+}
+
+function referenceMatchLabel(fields: string[]): string {
+  return fields.length === 1 ? fields[0]! : fields.slice(0, -1).join(", ") + " or " + fields.at(-1);
+}
+
+function looksLikeIdentifier(value: string, resolver: ReferenceResolver): boolean {
+  if (/\s/.test(value)) return false;
+  if (resolver.idPattern !== undefined) {
+    try { return new RegExp(resolver.idPattern).test(value); } catch { return false; }
+  }
+  return /^\d+$/.test(value) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
+    /^[a-z][a-z0-9]*_[a-z0-9][a-z0-9_-]*$/i.test(value) ||
+    /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(value) ||
+    /^[A-Za-z0-9_-]{20,}$/.test(value);
+}
+
+function putReferenceCache(cache: ReferenceCache, key: string, value: string | number): void {
+  cache.set(key, value);
+  while (cache.size > 256) cache.delete(cache.keys().next().value!);
+}
+
+function candidateRecord(item: Record<string, unknown>, resolver: ReferenceResolver): Record<string, unknown> {
+  return Object.fromEntries([resolver.id, ...resolver.match]
+    .filter((name, index, all) => all.indexOf(name) === index && item[name] !== undefined)
+    .map((name) => [name, item[name]]));
+}
+
+/** Resolve every eligible reference after validation/coercion and before the
+ * requested API call. Matching is exact (case-insensitive for strings),
+ * never fuzzy. Zero matches fail before the requested API call. */
+export async function resolveReferences(
+  op: OpLike,
+  preparedArgs: Record<string, unknown>,
+  options: ResolveReferencesOptions,
+): Promise<ResolveReferencesResult> {
+  const args = { ...preparedArgs };
+  const maxPages = Math.max(1, Math.floor(options.maxPages ?? 5));
+  for (const param of op.params) {
+    const raw = args[param.name];
+    if (typeof raw !== "string" || param.resolve === false) continue;
+    const value = raw.trim();
+
+    if (value.toLowerCase() === "me" && userShapedReference(param.name) && options.identityTool) {
+      const identity = findOperation(options.ops, options.identityTool);
+      if (identity) {
+        const cacheKey = "me:" + identity.tool;
+        const cached = options.cache.get(cacheKey);
+        if (cached !== undefined) {
+          args[param.name] = cached;
+          continue;
+        }
+        const outcome = await options.runOperation(identity, {});
+        if (outcome.isError) return { ok: false, outcome };
+        const body = outcomeValue(outcome);
+        const id = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).id : undefined;
+        if (typeof id !== "string" && typeof id !== "number") {
+          return { ok: false, outcome: referenceError("NOT_AVAILABLE", `${identity.tool} did not return a top-level id, so "me" cannot be resolved for ${param.name}.`, param.name, ["Pass the caller's exact ID instead."]) };
+        }
+        putReferenceCache(options.cache, cacheKey, id);
+        args[param.name] = id;
+        continue;
+      }
+    }
+
+    const resolver = param.resolve && typeof param.resolve === "object" ? param.resolve : undefined;
+    if (!resolver || looksLikeIdentifier(value, resolver)) continue;
+    const source = findOperation(options.ops, resolver.via);
+    if (!source) continue;
+    const cacheKey = source.tool + ":" + resolver.id + ":" + resolver.match.join(",") + ":" + value.toLowerCase();
+    const cached = options.cache.get(cacheKey);
+    if (cached !== undefined) {
+      args[param.name] = cached;
+      continue;
+    }
+
+    const matches = new Map<string, { id: string | number; item: Record<string, unknown> }>();
+    let pageArgs: Record<string, unknown> = {};
+    for (const sourceParam of source.params) {
+      if (args[sourceParam.name] !== undefined && sourceParam.name !== param.name) pageArgs[sourceParam.name] = args[sourceParam.name];
+    }
+    if (resolver.filterParam) pageArgs[resolver.filterParam] = value;
+    if (!hasOwnFieldsParam(source)) pageArgs.fields = [resolver.id, ...resolver.match];
+
+    let exhausted = false;
+    for (let pageNumber = 1; pageNumber <= maxPages; pageNumber++) {
+      const outcome = await options.runOperation(source, pageArgs);
+      if (outcome.isError) return { ok: false, outcome };
+      const page = referencePage(outcomeValue(outcome));
+      if (!page) {
+        return { ok: false, outcome: referenceError("NOT_AVAILABLE", `${source.tool} did not return one recognizable item array, so ${param.name} cannot be resolved by name.`, param.name, ["Pass the exact ID instead.", `Check the resolver hint for ${source.tool}.`]) };
+      }
+      for (const item of page.items) {
+        const id = item[resolver.id];
+        if (typeof id !== "string" && typeof id !== "number") continue;
+        const hit = resolver.match.some((field) => typeof item[field] === "string" && (item[field] as string).toLowerCase() === value.toLowerCase());
+        if (hit) matches.set(typeof id + ":" + String(id), { id, item });
+      }
+      if (matches.size > 1) {
+        const candidates = [...matches.values()].map(({ item }) => candidateRecord(item, resolver));
+        return { ok: false, outcome: referenceError("REFERENCE_AMBIGUOUS", `${JSON.stringify(raw)} matches multiple candidates for ${param.name}; nothing was sent to ${op.tool}.`, param.name, ["Choose one candidate ID and call again."], candidates) };
+      }
+      if (!page.nextPage) {
+        exhausted = true;
+        break;
+      }
+      pageArgs = { ...pageArgs, ...page.nextPage };
+    }
+    if (!exhausted) {
+      return { ok: false, outcome: referenceError("REFERENCE_SCAN_LIMIT", `${source.tool} still had more results after ${maxPages} pages, so ${JSON.stringify(raw)} could not be resolved unambiguously.`, param.name, ["Pass the exact ID instead.", `Narrow ${source.tool} with its filters, or declare a more selective resolver.`]) };
+    }
+    const match = [...matches.values()][0];
+    if (!match) {
+      return { ok: false, outcome: referenceError("REFERENCE_NOT_FOUND", `${JSON.stringify(raw)} did not exactly match any ${referenceMatchLabel(resolver.match)} from ${source.tool}; nothing was sent to ${op.tool}.`, param.name, [`Call ${source.tool} to choose an exact ${referenceMatchLabel(resolver.match)} or ID, then call again.`]) };
+    }
+    putReferenceCache(options.cache, cacheKey, match.id);
+    args[param.name] = match.id;
+  }
+  return { ok: true, args };
 }
 
 /** The isError result for bad arguments: one stable code, one issue per
@@ -1162,7 +1425,9 @@ export async function binaryOutcome(blob: Blob, options: BinaryOptions = {}): Pr
  * generated CLI's error envelope). Additive only. */
 export type ErrorCode =
   | "NO_AUTH" | "AUTH_INVALID" | "PLAN_LIMIT" | "NOT_FOUND" | "INVALID_REQUEST" | "RATE_LIMITED"
-  | "SPEC_INVALID" | "SERVER_ERROR" | "NETWORK_ERROR" | "VALIDATION_FAILED" | "INVALID_ARGUMENTS" | "CONFIRMATION_REQUIRED" | "NOT_AVAILABLE" | "CALL_FAILED";
+  | "SPEC_INVALID" | "SERVER_ERROR" | "NETWORK_ERROR" | "VALIDATION_FAILED" | "INVALID_ARGUMENTS" | "CONFIRMATION_REQUIRED"
+  | "REFERENCE_NOT_FOUND" | "REFERENCE_AMBIGUOUS" | "REFERENCE_SCAN_LIMIT" | "NOT_AVAILABLE" | "CALL_FAILED"
+  | "ACCOUNT_LINK_REQUIRED" | "ACCOUNT_LINK_CANCELLED";
 
 export interface ErrorContext {
   /** One sentence on how to supply a credential on this transport. */
@@ -1368,8 +1633,6 @@ export function searchScore(op: OpLike, query: string): number {
 }
 
 export async function docsSearch(source: DocsSource, query: string, page = 1): Promise<ToolOutcome> {
-  const term = query.trim().toLowerCase();
-  const terms = searchTerms(query);
   const sections: string[] = [];
   const ranked = source.ops
     .map((op) => ({ op, score: searchScore(op, query) }))
@@ -1391,33 +1654,20 @@ export async function docsSearch(source: DocsSource, query: string, page = 1): P
   } else if (ranked.length > 0) {
     sections.push("No reference matches on page " + (pageIndex + 1) + "; there are " + Math.ceil(ranked.length / SEARCH_PAGE_SIZE) + " pages.");
   }
-  const prose = await fetchDocs(source, "llms-full.txt");
-  let proseMatchCount = 0;
-  if (prose !== null) {
-    let heading = "";
-    const proseMatches: { heading: string; excerpt: string; score: number }[] = [];
-    for (const line of prose.split("\n")) {
-      if (/^#{1,3} /.test(line)) heading = line.replace(/^#+ /, "").trim();
-      else {
-        const lowerHeading = heading.toLowerCase();
-        const lowerLine = line.toLowerCase();
-        const matched = terms.filter((word) => lowerHeading.includes(word) || lowerLine.includes(word));
-        if (matched.length > 0) {
-          const allTerms = matched.length === terms.length;
-          proseMatches.push({
-            heading,
-            excerpt: line.trim().slice(0, 160),
-            score: matched.length * 10 + (allTerms ? 50 : 0) + (lowerHeading.includes(term) || lowerLine.includes(term) ? 25 : 0),
-          });
-        }
-      }
-    }
-    proseMatches.sort((a, b) => b.score - a.score || a.heading.localeCompare(b.heading) || a.excerpt.localeCompare(b.excerpt));
-    proseMatchCount = proseMatches.length;
-    if (proseMatches.length > 0) {
-      sections.push("Guide matches (best first):\n" + proseMatches.slice(0, 15).map((match) => "- [" + match.heading + "] " + match.excerpt).join("\n"));
-    }
+  const { guides, status } = await searchConnectedGuides(source.docsUrl(), source.docsIndexUrl?.() ?? null, (path) => fetchDocs(source, path), query);
+  const guideSlice = guides.slice(pageIndex * SEARCH_PAGE_SIZE, (pageIndex + 1) * SEARCH_PAGE_SIZE);
+  const proseMatchCount = guides.length;
+  if (guideSlice.length > 0) {
+    sections.push("Guide matches (best first, " + guides.length + " pages):\n" + guideSlice.map((match) =>
+      "- [" + match.title + (match.section ? " / " + match.section : "") + "](" + match.url + "): " + match.excerpt + "\n  read_docs " + JSON.stringify({ page: match.url })).join("\n"));
   }
+  if (status === "unavailable") sections.push("The docs site is unavailable; the API reference was still searched.");
+  const structured = {
+    schema_version: "1", query, page: pageIndex + 1,
+    reference: slice.map(({ op }) => ({ tool: op.tool, method: op.httpMethod, path: op.path, ...(op.summary ? { summary: op.summary } : {}), read_tool: { name: "read_docs", arguments: { page: op.tool } } })),
+    guides: guideSlice.map((match) => ({ ...match, read_tool: { name: "read_docs", arguments: { page: match.url } } })),
+    totals: { reference: ranked.length, guides: guides.length }, guides_status: status,
+  };
   if (omittedRanked.length > 0 && ranked.length === 0 && proseMatchCount === 0) {
     return omittedPlanLimit(omittedRanked.map((result) => result.op));
   }
@@ -1429,9 +1679,10 @@ export async function docsSearch(source: DocsSource, query: string, page = 1): P
     return {
       text: (coverage ? coverage + "\n\n" : "") + "No matches for: " + query + (source.docsUrl() === null && (source.docsIndexUrl?.() ?? null) === null ? " (a docs URL was not provided at generate time; only the API reference was searched)" : ""),
       isError: false,
+      structured,
     };
   }
-  return { text: [...(coverage ? [coverage] : []), ...sections].join("\n\n"), isError: false };
+  return { text: [...(coverage ? [coverage] : []), ...sections].join("\n\n"), isError: false, structured };
 }
 
 export async function docsRead(source: DocsSource, page: string): Promise<ToolOutcome> {
@@ -1443,9 +1694,7 @@ export async function docsRead(source: DocsSource, page: string): Promise<ToolOu
   let target = page;
   if (!/^https?:\/\//.test(target)) {
     const index = await fetchDocs(source, "llms.txt");
-    const linked = index?.match(/\((https?:[^)]+)\)/g)?.map((m) => m.slice(1, -1)) ?? [];
-    const hit = linked.find((u) => u.toLowerCase().includes(target.toLowerCase()));
-    if (hit !== undefined) target = hit;
+    target = docsReadTarget(index, source.docsUrl(), source.docsIndexUrl?.() ?? null, target);
   }
   const text = await fetchDocs(source, target);
   if (text === null) {
