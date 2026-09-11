@@ -3077,6 +3077,23 @@
                   "uniqueItems": true,
                   "type": "array"
                 },
+                "evidence_basis": {
+                  "enum": [
+                    "contract",
+                    "heuristic",
+                    "implementation"
+                  ],
+                  "description": "Whether the finding is provable from the Definition, a conservative review suggestion, or a documen…",
+                  "type": "string"
+                },
+                "owner_decision_required": {
+                  "description": "Whether remediation requires intent that the Definition cannot prove.",
+                  "type": "boolean"
+                },
+                "surface_impact": {
+                  "description": "Concrete generated SDK, CLI, or MCP naming effect when Typeship can state it.",
+                  "type": "string"
+                },
                 "locations": {
                   "description": "All affected coordinates, kept under one grouped diagnostic.",
                   "minItems": 1,
@@ -3147,6 +3164,26 @@
               "suppressed_occurrences": {
                 "minimum": 0,
                 "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "quality_signals": {
+            "description": "Current-revision signals for tuning Diagnostics policy.",
+            "properties": {
+              "suppressed_by_rule": {
+                "items": {
+                  "description": "Current-revision suppression usage for one stable Diagnostic rule.",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "stale_suppressions": {
+                "description": "Reviewed exceptions whose rule or exact path no longer matches this revision.",
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
               }
             },
             "type": "object"
@@ -3384,6 +3421,23 @@
                   "uniqueItems": true,
                   "type": "array"
                 },
+                "evidence_basis": {
+                  "enum": [
+                    "contract",
+                    "heuristic",
+                    "implementation"
+                  ],
+                  "description": "Whether the finding is provable from the Definition, a conservative review suggestion, or a documen…",
+                  "type": "string"
+                },
+                "owner_decision_required": {
+                  "description": "Whether remediation requires intent that the Definition cannot prove.",
+                  "type": "boolean"
+                },
+                "surface_impact": {
+                  "description": "Concrete generated SDK, CLI, or MCP naming effect when Typeship can state it.",
+                  "type": "string"
+                },
                 "locations": {
                   "description": "All affected coordinates, kept under one grouped diagnostic.",
                   "minItems": 1,
@@ -3454,6 +3508,26 @@
               "suppressed_occurrences": {
                 "minimum": 0,
                 "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "quality_signals": {
+            "description": "Current-revision signals for tuning Diagnostics policy.",
+            "properties": {
+              "suppressed_by_rule": {
+                "items": {
+                  "description": "Current-revision suppression usage for one stable Diagnostic rule.",
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "stale_suppressions": {
+                "description": "Reviewed exceptions whose rule or exact path no longer matches this revision.",
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
               }
             },
             "type": "object"
@@ -5461,13 +5535,41 @@
                   "type": "object"
                 },
                 "current_version": {
-                  "type": "string"
+                  "description": "Deprecated projection of the newest immutable Target Release; null until a release becomes Current.",
+                  "deprecated": true,
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "proposed_version": {
                   "type": [
                     "string",
                     "null"
                   ]
+                },
+                "proposed_version_source": {
+                  "enum": [
+                    "console",
+                    "api",
+                    "github",
+                    null
+                  ],
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "proposed_version_actor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "release_revision": {
+                  "description": "Optimistic concurrency revision for Draft selections.",
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "config": {
                   "description": "Target-specific overrides merged over Project.config. GraphQL settings are Definition-owned and never appear here.",
@@ -6030,6 +6132,11 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "publish_on_merge": {
+                      "description": "Commit repository-owned registry automation and report publication after the Draft merges.",
+                      "default": false,
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -6146,13 +6253,41 @@
             "type": "object"
           },
           "current_version": {
-            "type": "string"
+            "description": "Deprecated projection of the newest immutable Target Release; null until a release becomes Current.",
+            "deprecated": true,
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "proposed_version": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "proposed_version_source": {
+            "enum": [
+              "console",
+              "api",
+              "github",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposed_version_actor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release_revision": {
+            "description": "Optimistic concurrency revision for Draft selections.",
+            "minimum": 0,
+            "type": "integer"
           },
           "config": {
             "description": "Target-specific overrides merged over Project.config.",
@@ -6376,13 +6511,41 @@
             "type": "object"
           },
           "current_version": {
-            "type": "string"
+            "description": "Deprecated projection of the newest immutable Target Release; null until a release becomes Current.",
+            "deprecated": true,
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "proposed_version": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "proposed_version_source": {
+            "enum": [
+              "console",
+              "api",
+              "github",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposed_version_actor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release_revision": {
+            "description": "Optimistic concurrency revision for Draft selections.",
+            "minimum": 0,
+            "type": "integer"
           },
           "config": {
             "description": "Target-specific overrides merged over Project.config.",
@@ -6973,6 +7136,11 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "publish_on_merge": {
+                      "description": "Commit repository-owned registry automation and report publication after the Draft merges.",
+                      "default": false,
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -7086,13 +7254,41 @@
             "type": "object"
           },
           "current_version": {
-            "type": "string"
+            "description": "Deprecated projection of the newest immutable Target Release; null until a release becomes Current.",
+            "deprecated": true,
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "proposed_version": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "proposed_version_source": {
+            "enum": [
+              "console",
+              "api",
+              "github",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposed_version_actor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release_revision": {
+            "description": "Optimistic concurrency revision for Draft selections.",
+            "minimum": 0,
+            "type": "integer"
           },
           "config": {
             "description": "Target-specific overrides merged over Project.config.",
@@ -7276,11 +7472,26 @@
                   "type": "string"
                 },
                 "generation_id": {
-                  "description": "Unique identifier for a generation.",
-                  "examples": [
-                    "gen_7h2p5d9c3m8w1k6q"
+                  "description": "Null only for a verified release imported during package adoption.",
+                  "anyOf": [
+                    {
+                      "description": "Unique identifier for a generation.",
+                      "examples": [
+                        "gen_7h2p5d9c3m8w1k6q"
+                      ],
+                      "pattern": "^gen_[a-z0-9]{16}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "origin": {
+                  "enum": [
+                    "typeship",
+                    "imported"
                   ],
-                  "pattern": "^gen_[a-z0-9]{16}$",
                   "type": "string"
                 },
                 "version": {
@@ -7344,6 +7555,133 @@
                   "description": "Immutable provider-native revision that was merged or published.",
                   "type": "string"
                 },
+                "import_provenance": {
+                  "properties": {
+                    "tag": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "registry_url": {
+                      "format": "uri",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "artifact_digest": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "imported_at": {
+                      "format": "date-time",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "publications": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "examples": [
+                          "pub_2m8q4v7k1p9d5h6c"
+                        ],
+                        "pattern": "^pub_[a-z0-9]{16}$",
+                        "type": "string"
+                      },
+                      "object": {
+                        "const": "publication",
+                        "type": "string"
+                      },
+                      "target_release_id": {
+                        "examples": [
+                          "rel_7m2q8v4k1p9d5h6c"
+                        ],
+                        "pattern": "^rel_[a-z0-9]{16}$",
+                        "type": "string"
+                      },
+                      "destination": {
+                        "enum": [
+                          "github",
+                          "npm",
+                          "pypi",
+                          "go",
+                          "mcp"
+                        ],
+                        "type": "string"
+                      },
+                      "state": {
+                        "enum": [
+                          "pending",
+                          "publishing",
+                          "published",
+                          "failed"
+                        ],
+                        "type": "string"
+                      },
+                      "attempt": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "run_url": {
+                        "format": "uri",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "registry_url": {
+                        "format": "uri",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "artifact_digest": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "error": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "started_at": {
+                        "format": "date-time",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "finished_at": {
+                        "format": "date-time",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "updated_at": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
                 "created_at": {
                   "format": "date-time",
                   "type": "string"
@@ -7378,6 +7716,708 @@
       },
       "example_arguments": {
         "target_id": "tgt_5m8q2v7k1p9d4h6c"
+      }
+    },
+    {
+      "operation": "targets.retrieveDraft",
+      "signature": "execute(targets_retrieve_draft, arguments)",
+      "tool": "targets_retrieve_draft",
+      "example_call": {
+        "name": "execute",
+        "arguments": {
+          "operation": "targets_retrieve_draft",
+          "arguments": {
+            "target_id": "tgt_5m8q2v7k1p9d4h6c"
+          }
+        }
+      },
+      "method": "GET",
+      "path": "/targets/{target_id}/draft",
+      "summary": "Retrieve a Target's rolling Draft release",
+      "description": "Returns Current, the cumulative Draft version and readiness, its exact head, and the optimistic release revision.",
+      "safety": "read",
+      "auth": "required",
+      "security": [
+        {
+          "apiKey": []
+        }
+      ],
+      "paginated": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "target_id": {
+            "description": "Stable identifier for one configured generated product.",
+            "examples": [
+              "tgt_5m8q2v7k1p9d4h6c"
+            ],
+            "pattern": "^tgt_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Result keys to keep, as dotted paths (e.g. [\"id\",\"name\"]). Omit for the whole result. Keeps responses small."
+          }
+        },
+        "required": [
+          "target_id"
+        ]
+      },
+      "output_schema": {
+        "properties": {
+          "object": {
+            "const": "target_draft",
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Stable identifier for one configured generated product.",
+            "examples": [
+              "tgt_5m8q2v7k1p9d4h6c"
+            ],
+            "pattern": "^tgt_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "current_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "properties": {
+                  "mode": {
+                    "const": "automatic",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "mode": {
+                    "const": "exact",
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "enum": [
+                      "console",
+                      "api",
+                      "github",
+                      null
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "actor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "readiness": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "changes": {
+            "properties": {
+              "changelog": {
+                "description": "Cumulative changelog against Current.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "breaking_count": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "previous_version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "head_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pull_request_url": {
+            "format": "uri",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "request_id": {
+            "description": "Server-generated identifier used to correlate this response with Typeship logs.",
+            "examples": [
+              "req_3k8m1v6q9p2d7h4c"
+            ],
+            "pattern": "^req_[a-z0-9]{16}$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_arguments": {
+        "target_id": "tgt_5m8q2v7k1p9d4h6c"
+      }
+    },
+    {
+      "operation": "targets.updateDraft",
+      "signature": "execute(targets_update_draft, arguments)",
+      "tool": "targets_update_draft",
+      "example_call": {
+        "name": "execute",
+        "arguments": {
+          "operation": "targets_update_draft",
+          "arguments": {
+            "target_id": "tgt_5m8q2v7k1p9d4h6c",
+            "version": "1.0.0"
+          }
+        }
+      },
+      "method": "PATCH",
+      "path": "/targets/{target_id}/draft",
+      "summary": "Select an exact Draft version or return to automatic versioning",
+      "description": "Validates the selection against the cumulative required bump and regenerates the same rolling Draft pull request.",
+      "safety": "write",
+      "auth": "required",
+      "security": [
+        {
+          "apiKey": []
+        }
+      ],
+      "paginated": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "target_id": {
+            "description": "Stable identifier for one configured generated product.",
+            "examples": [
+              "tgt_5m8q2v7k1p9d4h6c"
+            ],
+            "pattern": "^tgt_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "version": {
+            "description": "Exact SemVer, or null to return to automatic selection.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expected_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Result keys to keep, as dotted paths (e.g. [\"id\",\"name\"]). Omit for the whole result. Keeps responses small."
+          }
+        },
+        "required": [
+          "target_id",
+          "version"
+        ]
+      },
+      "output_schema": {
+        "properties": {
+          "object": {
+            "const": "target_draft",
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Stable identifier for one configured generated product.",
+            "examples": [
+              "tgt_5m8q2v7k1p9d4h6c"
+            ],
+            "pattern": "^tgt_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "current_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "properties": {
+                  "mode": {
+                    "const": "automatic",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "mode": {
+                    "const": "exact",
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "enum": [
+                      "console",
+                      "api",
+                      "github",
+                      null
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "actor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "readiness": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "changes": {
+            "properties": {
+              "changelog": {
+                "description": "Cumulative changelog against Current.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "breaking_count": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "previous_version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "head_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pull_request_url": {
+            "format": "uri",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "request_id": {
+            "description": "Server-generated identifier used to correlate this response with Typeship logs.",
+            "examples": [
+              "req_3k8m1v6q9p2d7h4c"
+            ],
+            "pattern": "^req_[a-z0-9]{16}$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_arguments": {
+        "target_id": "tgt_5m8q2v7k1p9d4h6c",
+        "version": "1.0.0"
+      }
+    },
+    {
+      "operation": "targets.adoptRelease",
+      "signature": "execute(targets_adopt_release, arguments)",
+      "tool": "targets_adopt_release",
+      "example_call": {
+        "name": "execute",
+        "arguments": {
+          "operation": "targets_adopt_release",
+          "arguments": {
+            "target_id": "tgt_5m8q2v7k1p9d4h6c",
+            "version": "1.0.0",
+            "tag": "value"
+          }
+        }
+      },
+      "method": "POST",
+      "path": "/targets/{target_id}/adopt",
+      "summary": "Adopt a verified existing package as Current",
+      "description": "Verifies the repository tag, package metadata, and registry artifact; records an Imported Current release; then opens the first Typeship Draft at the next major version because no trusted generated baseline exists yet.",
+      "safety": "write",
+      "auth": "required",
+      "security": [
+        {
+          "apiKey": []
+        }
+      ],
+      "paginated": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "target_id": {
+            "description": "Stable identifier for one configured generated product.",
+            "examples": [
+              "tgt_5m8q2v7k1p9d4h6c"
+            ],
+            "pattern": "^tgt_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "Idempotency-Key": {
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[!-~]+$",
+            "type": "string",
+            "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+          },
+          "version": {
+            "description": "Exact already-published package version to make Current.",
+            "type": "string"
+          },
+          "tag": {
+            "description": "Immutable repository tag containing the matching package source.",
+            "minLength": 1,
+            "maxLength": 255,
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Result keys to keep, as dotted paths (e.g. [\"id\",\"name\"]). Omit for the whole result. Keeps responses small."
+          }
+        },
+        "required": [
+          "target_id",
+          "version",
+          "tag"
+        ]
+      },
+      "output_schema": {
+        "properties": {
+          "id": {
+            "examples": [
+              "rel_7m2q8v4k1p9d5h6c"
+            ],
+            "pattern": "^rel_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "object": {
+            "const": "target_release",
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Stable identifier for one configured generated product.",
+            "examples": [
+              "tgt_5m8q2v7k1p9d4h6c"
+            ],
+            "pattern": "^tgt_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "generation_id": {
+            "description": "Null only for a verified release imported during package adoption.",
+            "anyOf": [
+              {
+                "description": "Unique identifier for a generation.",
+                "examples": [
+                  "gen_7h2p5d9c3m8w1k6q"
+                ],
+                "pattern": "^gen_[a-z0-9]{16}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "enum": [
+              "typeship",
+              "imported"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "Immutable package version released from this Target.",
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "stable",
+              "prerelease"
+            ],
+            "type": "string"
+          },
+          "provider": {
+            "description": "Delivery provider that accepted the release.",
+            "type": "string"
+          },
+          "repository": {
+            "anyOf": [
+              {
+                "properties": {
+                  "provider": {
+                    "enum": [
+                      "github"
+                    ],
+                    "description": "GitHub is the only launch provider; the field is stable for future adapters.",
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "description": "Provider-native repository identity, opaque outside its adapter.",
+                    "examples": [
+                      "acme/payments-api"
+                    ],
+                    "maxLength": 512,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "definition_revision_id": {
+            "anyOf": [
+              {
+                "description": "Unique identifier for an immutable resolved Definition Revision.",
+                "examples": [
+                  "drev_6m1q8v4k2p9d7h3c"
+                ],
+                "pattern": "^drev_[a-z0-9]{16}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery_revision": {
+            "description": "Immutable provider-native revision that was merged or published.",
+            "type": "string"
+          },
+          "import_provenance": {
+            "properties": {
+              "tag": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "registry_url": {
+                "format": "uri",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "artifact_digest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "imported_at": {
+                "format": "date-time",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "publications": {
+            "items": {
+              "properties": {
+                "id": {
+                  "examples": [
+                    "pub_2m8q4v7k1p9d5h6c"
+                  ],
+                  "pattern": "^pub_[a-z0-9]{16}$",
+                  "type": "string"
+                },
+                "object": {
+                  "const": "publication",
+                  "type": "string"
+                },
+                "target_release_id": {
+                  "examples": [
+                    "rel_7m2q8v4k1p9d5h6c"
+                  ],
+                  "pattern": "^rel_[a-z0-9]{16}$",
+                  "type": "string"
+                },
+                "destination": {
+                  "enum": [
+                    "github",
+                    "npm",
+                    "pypi",
+                    "go",
+                    "mcp"
+                  ],
+                  "type": "string"
+                },
+                "state": {
+                  "enum": [
+                    "pending",
+                    "publishing",
+                    "published",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                "attempt": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "run_url": {
+                  "format": "uri",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "registry_url": {
+                  "format": "uri",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "artifact_digest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "started_at": {
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "finished_at": {
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "updated_at": {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Server-generated identifier used to correlate this response with Typeship logs.",
+            "examples": [
+              "req_3k8m1v6q9p2d7h4c"
+            ],
+            "pattern": "^req_[a-z0-9]{16}$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_arguments": {
+        "target_id": "tgt_5m8q2v7k1p9d4h6c",
+        "version": "1.0.0",
+        "tag": "value"
       }
     },
     {
@@ -7448,11 +8488,26 @@
             "type": "string"
           },
           "generation_id": {
-            "description": "Unique identifier for a generation.",
-            "examples": [
-              "gen_7h2p5d9c3m8w1k6q"
+            "description": "Null only for a verified release imported during package adoption.",
+            "anyOf": [
+              {
+                "description": "Unique identifier for a generation.",
+                "examples": [
+                  "gen_7h2p5d9c3m8w1k6q"
+                ],
+                "pattern": "^gen_[a-z0-9]{16}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "enum": [
+              "typeship",
+              "imported"
             ],
-            "pattern": "^gen_[a-z0-9]{16}$",
             "type": "string"
           },
           "version": {
@@ -7515,6 +8570,438 @@
           "delivery_revision": {
             "description": "Immutable provider-native revision that was merged or published.",
             "type": "string"
+          },
+          "import_provenance": {
+            "properties": {
+              "tag": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "registry_url": {
+                "format": "uri",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "artifact_digest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "imported_at": {
+                "format": "date-time",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "publications": {
+            "items": {
+              "properties": {
+                "id": {
+                  "examples": [
+                    "pub_2m8q4v7k1p9d5h6c"
+                  ],
+                  "pattern": "^pub_[a-z0-9]{16}$",
+                  "type": "string"
+                },
+                "object": {
+                  "const": "publication",
+                  "type": "string"
+                },
+                "target_release_id": {
+                  "examples": [
+                    "rel_7m2q8v4k1p9d5h6c"
+                  ],
+                  "pattern": "^rel_[a-z0-9]{16}$",
+                  "type": "string"
+                },
+                "destination": {
+                  "enum": [
+                    "github",
+                    "npm",
+                    "pypi",
+                    "go",
+                    "mcp"
+                  ],
+                  "type": "string"
+                },
+                "state": {
+                  "enum": [
+                    "pending",
+                    "publishing",
+                    "published",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                "attempt": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "run_url": {
+                  "format": "uri",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "registry_url": {
+                  "format": "uri",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "artifact_digest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "started_at": {
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "finished_at": {
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "updated_at": {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Server-generated identifier used to correlate this response with Typeship logs.",
+            "examples": [
+              "req_3k8m1v6q9p2d7h4c"
+            ],
+            "pattern": "^req_[a-z0-9]{16}$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_arguments": {
+        "target_release_id": "rel_7m2q8v4k1p9d5h6c"
+      }
+    },
+    {
+      "operation": "targets.republishRelease",
+      "signature": "execute(targets_republish_release, arguments)",
+      "tool": "targets_republish_release",
+      "example_call": {
+        "name": "execute",
+        "arguments": {
+          "operation": "targets_republish_release",
+          "arguments": {
+            "target_release_id": "rel_7m2q8v4k1p9d5h6c"
+          }
+        }
+      },
+      "method": "POST",
+      "path": "/target_releases/{target_release_id}/republish",
+      "summary": "Retry publication of an exact Target release",
+      "description": "Dispatches the repository-owned republish workflow for this immutable version and accepted commit. It never selects the latest Draft or release.",
+      "safety": "write",
+      "auth": "required",
+      "security": [
+        {
+          "apiKey": []
+        }
+      ],
+      "paginated": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "target_release_id": {
+            "examples": [
+              "rel_7m2q8v4k1p9d5h6c"
+            ],
+            "pattern": "^rel_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "Idempotency-Key": {
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[!-~]+$",
+            "type": "string",
+            "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Result keys to keep, as dotted paths (e.g. [\"id\",\"name\"]). Omit for the whole result. Keeps responses small."
+          }
+        },
+        "required": [
+          "target_release_id"
+        ]
+      },
+      "output_schema": {
+        "properties": {
+          "id": {
+            "examples": [
+              "rel_7m2q8v4k1p9d5h6c"
+            ],
+            "pattern": "^rel_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "object": {
+            "const": "target_release",
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Stable identifier for one configured generated product.",
+            "examples": [
+              "tgt_5m8q2v7k1p9d4h6c"
+            ],
+            "pattern": "^tgt_[a-z0-9]{16}$",
+            "type": "string"
+          },
+          "generation_id": {
+            "description": "Null only for a verified release imported during package adoption.",
+            "anyOf": [
+              {
+                "description": "Unique identifier for a generation.",
+                "examples": [
+                  "gen_7h2p5d9c3m8w1k6q"
+                ],
+                "pattern": "^gen_[a-z0-9]{16}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "enum": [
+              "typeship",
+              "imported"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "Immutable package version released from this Target.",
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "stable",
+              "prerelease"
+            ],
+            "type": "string"
+          },
+          "provider": {
+            "description": "Delivery provider that accepted the release.",
+            "type": "string"
+          },
+          "repository": {
+            "anyOf": [
+              {
+                "properties": {
+                  "provider": {
+                    "enum": [
+                      "github"
+                    ],
+                    "description": "GitHub is the only launch provider; the field is stable for future adapters.",
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "description": "Provider-native repository identity, opaque outside its adapter.",
+                    "examples": [
+                      "acme/payments-api"
+                    ],
+                    "maxLength": 512,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "definition_revision_id": {
+            "anyOf": [
+              {
+                "description": "Unique identifier for an immutable resolved Definition Revision.",
+                "examples": [
+                  "drev_6m1q8v4k2p9d7h3c"
+                ],
+                "pattern": "^drev_[a-z0-9]{16}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery_revision": {
+            "description": "Immutable provider-native revision that was merged or published.",
+            "type": "string"
+          },
+          "import_provenance": {
+            "properties": {
+              "tag": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "registry_url": {
+                "format": "uri",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "artifact_digest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "imported_at": {
+                "format": "date-time",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "publications": {
+            "items": {
+              "properties": {
+                "id": {
+                  "examples": [
+                    "pub_2m8q4v7k1p9d5h6c"
+                  ],
+                  "pattern": "^pub_[a-z0-9]{16}$",
+                  "type": "string"
+                },
+                "object": {
+                  "const": "publication",
+                  "type": "string"
+                },
+                "target_release_id": {
+                  "examples": [
+                    "rel_7m2q8v4k1p9d5h6c"
+                  ],
+                  "pattern": "^rel_[a-z0-9]{16}$",
+                  "type": "string"
+                },
+                "destination": {
+                  "enum": [
+                    "github",
+                    "npm",
+                    "pypi",
+                    "go",
+                    "mcp"
+                  ],
+                  "type": "string"
+                },
+                "state": {
+                  "enum": [
+                    "pending",
+                    "publishing",
+                    "published",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                "attempt": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "run_url": {
+                  "format": "uri",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "registry_url": {
+                  "format": "uri",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "artifact_digest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "started_at": {
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "finished_at": {
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "updated_at": {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
           },
           "created_at": {
             "format": "date-time",
