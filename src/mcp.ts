@@ -24,7 +24,7 @@ import { TypeshipClient, formatDebugEvent, type ClientOptions, type DebugEvent }
 import { GLOBALS, OMITTED_OPS, OPS, buildArgs, type OpSpec } from "./ops.js";
 import {
   DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
-  dataOutcome, errorOutcome, handleRpc, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, serverInstructions,
+  dataOutcome, errorOutcome, handleRpc, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, resolveReferences, serverInstructions,
   takeCancelled, textError, toolDefinitions, visibleOps,
   type ArgumentIssue, type DocsSource, type McpServer, type OpLike, type RpcOutcome, type ToolOutcome,
 } from "./mcp-protocol.js";
@@ -132,7 +132,7 @@ function getClient(): TypeshipClient {
 
 /** Run one operation through the generated SDK: the same client, the same
  * typed errors and pagination a hand-written caller would get. */
-async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, authHeader?: string): Promise<ToolOutcome> {
+async function callOperationRaw(op: OpSpec, rawArgs: Record<string, unknown>, authHeader?: string): Promise<ToolOutcome> {
   // Arguments are checked against the tool's schema first: unknown names,
   // wrong types and missing requirements come back as one isError result,
   // nothing reaches the API half-formed and nothing is dropped silently.
@@ -187,6 +187,37 @@ async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, authH
   }
 }
 
+/** Name-or-ID resolution is the one wrapper around the ordinary executor,
+ * so a direct operation tool and compact execute take exactly the same path. */
+const REFERENCE_CACHES = new Map<string, Map<string, string | number>>();
+function referenceCacheFor(authHeader?: string): Map<string, string | number> {
+  const key = authHeader ?? "stdio";
+  let cache = REFERENCE_CACHES.get(key);
+  if (!cache) {
+    cache = new Map();
+    REFERENCE_CACHES.set(key, cache);
+    while (REFERENCE_CACHES.size > 16) REFERENCE_CACHES.delete(REFERENCE_CACHES.keys().next().value!);
+  }
+  return cache;
+}
+
+async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, authHeader?: string): Promise<ToolOutcome> {
+  const prepared = prepareCall(op as unknown as OpLike, rawArgs, { maxChars: MAX_RESULT_CHARS });
+  if (!prepared.ok) return prepared.outcome;
+  const resolved = await resolveReferences(op as unknown as OpLike, prepared.call.args, {
+    ops: OPS as unknown as OpLike[],
+    identityTool: IDENTITY_TOOL,
+    cache: referenceCacheFor(authHeader),
+    runOperation: (source, args) => callOperationRaw(source as OpSpec, args, authHeader),
+  });
+  if (!resolved.ok) return resolved.outcome;
+  const args = {
+    ...resolved.args,
+    ...(prepared.call.fields ? { fields: prepared.call.fields.map((path) => path.join(".")) } : {}),
+  };
+  return callOperationRaw(op, args, authHeader);
+}
+
 /** Running as a process on this machine (stdio, or --http launched here),
  * as opposed to imported by a worker: the server can read and write local
  * files, so uploads are tools and binaries are saved to disk. */
@@ -230,6 +261,7 @@ function serverFor(authHeader?: string): McpServer {
     serverInfo: { name: SERVER_NAME, title: "typeship", version: SERVER_VERSION, ...(website ? { websiteUrl: website } : {}) },
     instructions: serverInstructions({
       title: "typeship",
+      ops: MCP_OPS as unknown as OpLike[],
       toolCount: MCP_OPS.length,
       generatedOperationCount: OPS.length,
       omittedOps: docsSource.omittedOps,
@@ -238,6 +270,7 @@ function serverFor(authHeader?: string): McpServer {
       hiddenWrites: HIDDEN_WRITES,
       authHint: authHeader !== undefined ? AUTH_HINT_HTTP : AUTH_HINT_STDIO,
       identityTool: MCP_OPS.some((o) => o.tool === IDENTITY_TOOL) ? IDENTITY_TOOL : null,
+      referenceResolution: MCP_OPS.some((o) => o.params.some((p) => p.resolve && typeof p.resolve === "object")),
       uploads: HAS_UPLOADS,
       custom: CUSTOM_INSTRUCTIONS,
     }),
