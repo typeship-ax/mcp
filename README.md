@@ -25,7 +25,7 @@ To run the local MCP server, configure your MCP client with `node` and the absol
 Generation does not publish a package. Before using the registry command below, confirm `name` and `version` in `package.json`, publish under a name you control, and verify that release is available on npm.
 
 ```sh
-npm install --global @typeship-ax/mcp@0.10.0
+npm install --global @typeship-ax/mcp@0.11.0
 ```
 
 ## Connect after publishing
