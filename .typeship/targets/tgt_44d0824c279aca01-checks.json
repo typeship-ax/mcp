@@ -19,7 +19,7 @@
     },
     {
       "name": "public_entrypoint",
-      "command": "node -e \"const p=require('./package.json');let e=typeof p.exports==='string'?p.exports:(p.exports&&p.exports['.']);e=typeof e==='string'?e:(e&&((e.import||e.require||e.default)));e=e||p.module||p.main;if(!e)throw Error('package has no public entry point');import(require('url').pathToFileURL(require('path').resolve(e)).href)\""
+      "command": "node -e \"const p=require('./package.json');if(!p.name||!p.exports||!p.exports['./mcp'])throw Error('package has no public MCP entry point');import(p.name+'/mcp')\""
     }
   ]
 }
