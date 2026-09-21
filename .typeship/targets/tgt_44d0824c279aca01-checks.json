@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "target_id": "tgt_44d0824c279aca01",
+  "output": "mcp",
+  "directory": "",
+  "tools": {
+    "node": "24.18.0",
+    "python": "3.11.15",
+    "go": "1.23"
+  },
+  "checks": [
+    {
+      "name": "build",
+      "command": "npm install --no-audit --no-fund && npm run build --if-present"
+    },
+    {
+      "name": "package",
+      "command": "npm pack --dry-run"
+    },
+    {
+      "name": "public_entrypoint",
+      "command": "node -e \"const p=require('./package.json');if(!p.name||!p.exports||!p.exports['./mcp'])throw Error('package has no public MCP entry point');import(p.name+'/mcp')\""
+    }
+  ]
+}
