@@ -20,14 +20,11 @@ Generate one Target from a Definition
 
 Safety: **write** · Authentication: **optional**
 
-Stateless generation: nothing is stored. Returns the full generated
-package as files. Works without an API key: anonymous calls generate
-the first 25 operations, rate limited per IP address, and the
-response's `limits` object says what was held back and where to lift
-it; anonymous calls from a Definition URL also carry `claim.url`, a link
-that turns the run into a project once a person signs in. With a key, the free plan generates the first 25 operations and
-paid plans generate the complete Definition. A present but invalid key is a
-401, not a downgrade to anonymous.
+Returns one generated package without saving a Project or retaining source files or generated files.
+
+Anonymous and Free requests include the first 25 operations. Paid plans include all operations. Anonymous requests are rate limited by IP address. Check `limits` for omitted operations; an invalid API key returns `401`.
+
+An anonymous URL request without source headers may return `claim.url`. Sign in through that link within seven days to save the recipe as a Project.
 
 Input schema:
 
@@ -81,7 +78,10 @@ Input schema:
           "additionalProperties": false,
           "type": "object"
         }
-      ]
+      ],
+      "example": {
+        "url": "https://typeship.dev/examples/petstore/openapi.yaml"
+      }
     },
     "target": {
       "description": "Stateless generator descriptor; no persisted Target is created.",
@@ -102,7 +102,10 @@ Input schema:
         "generator"
       ],
       "additionalProperties": false,
-      "type": "object"
+      "type": "object",
+      "example": {
+        "generator": "cli"
+      }
     },
     "package_name": {
       "description": "npm package or Python distribution override. Valid only for the TypeScript and Python SDK targets.",
@@ -548,6 +551,13 @@ Input schema:
               "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
               "type": "boolean"
             },
+            "changelog_url": {
+              "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "support_url": {
               "description": "Where the generated CLI's feedback command sends users. GitHub issues/new URLs get a prefilled title and environment details.",
               "type": [
@@ -769,10 +779,10 @@ Example `tools/call` parameters:
     "operation": "generate_run",
     "arguments": {
       "definition": {
-        "url": "https://example.com"
+        "url": "https://typeship.dev/examples/petstore/openapi.yaml"
       },
       "target": {
-        "generator": "typescript-sdk"
+        "generator": "cli"
       }
     }
   }
@@ -1185,7 +1195,9 @@ Create a project
 
 Safety: **write** · Authentication: **required**
 
-Stores a URL- or GitHub-sourced project. Free includes one stored project, every selected target, and the first 25 operations, while keeping manual and automatic regeneration, history, destination pull requests, and preview checks. Stateless POST /generate does not consume this slot. Pro adds projects and generates every operation in the Definition.
+Creates a Project from a URL or GitHub Definition.
+
+Free includes one saved Project, all selected Targets, and the first 25 operations per Target, with regeneration, history, delivery pull requests, and previews. Pro supports additional Projects and all operations. Stateless generation does not use a Project slot.
 
 Input schema:
 
@@ -1802,6 +1814,13 @@ Input schema:
                   "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
                   "type": "boolean"
                 },
+                "changelog_url": {
+                  "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "support_url": {
                   "description": "Where the generated CLI's feedback command sends users. GitHub issues/new URLs get a prefilled title and environment details.",
                   "type": [
@@ -2160,7 +2179,7 @@ Retrieve a project
 
 Safety: **read** · Authentication: **required**
 
-Returns Project-owned fields only. List Targets separately for Target and Delivery data.
+Returns the Project's settings and Definition ID. List its Targets separately to retrieve Target configuration and Deliveries.
 
 Input schema:
 
@@ -2598,6 +2617,13 @@ Input schema:
                   "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
                   "type": "boolean"
                 },
+                "changelog_url": {
+                  "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "support_url": {
                   "description": "Where the generated CLI's feedback command sends users. GitHub issues/new URLs get a prefilled title and environment details.",
                   "type": [
@@ -2942,7 +2968,7 @@ Analyze a project's latest Definition Revision
 
 Safety: **read** · Authentication: **required**
 
-Runs deterministic OpenAPI or GraphQL authorship checks against the latest observed immutable Definition Revision after applying the Definition's existing patches. Diagnostics group every affected location under a stable rule. Exact patches are included only when Typeship can derive the change without inventing API behavior.
+Checks the latest Definition Revision after applying its saved patches. Each finding groups affected locations under a stable rule ID. A suggested patch is included only when the Definition provides enough information to determine the correction.
 
 Input schema:
 
@@ -3110,7 +3136,7 @@ Output schema:
             "type": "string"
           },
           "impact": {
-            "description": "Why consumers of generated SDK, CLI, or MCP surfaces care.",
+            "description": "Why consumers of generated CLI, MCP, or SDK surfaces care.",
             "type": "string"
           },
           "surfaces": {
@@ -3132,7 +3158,7 @@ Output schema:
             "type": "boolean"
           },
           "surface_impact": {
-            "description": "Concrete generated SDK, CLI, or MCP naming effect when Typeship can state it.",
+            "description": "Concrete generated CLI, MCP, or SDK naming effect when Typeship can state it.",
             "type": "string"
           },
           "locations": {
@@ -3284,7 +3310,7 @@ Refresh a project's Diagnostics from its configured source
 
 Safety: **write** · Authentication: **required**
 
-Fetches the complete configured source, records a new immutable revision only when content changed, and returns its Diagnostics. This does not generate targets or consume a metered generation.
+Fetches the configured source and returns updated Diagnostics. Creates a Definition Revision only when the content changes. Does not generate Targets or use a metered generation.
 
 Input schema:
 
@@ -3459,7 +3485,7 @@ Output schema:
             "type": "string"
           },
           "impact": {
-            "description": "Why consumers of generated SDK, CLI, or MCP surfaces care.",
+            "description": "Why consumers of generated CLI, MCP, or SDK surfaces care.",
             "type": "string"
           },
           "surfaces": {
@@ -3481,7 +3507,7 @@ Output schema:
             "type": "boolean"
           },
           "surface_impact": {
-            "description": "Concrete generated SDK, CLI, or MCP naming effect when Typeship can state it.",
+            "description": "Concrete generated CLI, MCP, or SDK naming effect when Typeship can state it.",
             "type": "string"
           },
           "locations": {
@@ -3633,7 +3659,9 @@ Apply exact, reviewed diagnostic remediations
 
 Safety: **write** · Authentication: **required**
 
-Applies only deterministic patches. Repository sources receive an updateable source pull request; URL sources receive project overlays. Diagnostics that require API-owner intent return 422 and include an authoring_brief in the Diagnostic instead.
+Applies reviewed patches from Diagnostics. For a repository source, opens or updates a source pull request. For a URL source, saves Definition patches.
+
+Findings that need an API-owner decision return `422`. Read the finding's `authoring_brief` and update the source instead.
 
 Input schema:
 
@@ -3747,7 +3775,7 @@ Diagnose a project's repository integrations
 
 Safety: **read** · Authentication: **required**
 
-Returns provider-neutral, machine-actionable source and destination access, Definition readability, source-approval label setup, required status names, and the latest durable webhook delivery. The Console renders this same result.
+Checks repository access, Definition readability, source-approval labels, and required checks. Includes the latest webhook delivery so you can investigate missing updates.
 
 Input schema:
 
@@ -4268,13 +4296,9 @@ Generate targets and open pull requests
 
 Safety: **write** · Authentication: **required**
 
-Resolves the project's URL or GitHub source, generates every
-configured delivery package, stores each result in the project's history,
-and attempts to open a pull request in every configured destination.
-When the complete generated tree already matches a destination, no
-commit, branch, or pull request is created and that generation reports
-`pr_status: no_changes`. This is the same pipeline automatic
-regeneration runs after a source change.
+Generates each active Target from the Project's source, saves the results, and attempts delivery to each configured destination.
+
+If the package already matches a destination and no Draft is open, returns `pr_status: no_changes` without creating a commit, branch, or pull request. An existing Draft stays open. Automatic generation uses the same workflow.
 
 Input schema:
 
@@ -4873,7 +4897,7 @@ Update and resolve a Definition
 
 Safety: **write** · Authentication: **required**
 
-Resolves the complete document graph and records a new immutable revision before saving.
+Resolves the source documents and records a new Definition Revision before saving the update.
 
 Input schema:
 
@@ -5820,7 +5844,7 @@ Create an independently configured Target
 
 Safety: **write** · Authentication: **required**
 
-Several Targets may use the same generator with distinct configuration, Deliveries, and release streams.
+Creates a Target with its own configuration, Deliveries, and release history. Multiple Targets can use the same generator.
 
 Input schema:
 
@@ -6062,6 +6086,13 @@ Input schema:
                 "update_notice": {
                   "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
                   "type": "boolean"
+                },
+                "changelog_url": {
+                  "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "support_url": {
                   "description": "Where the generated CLI's feedback command sends users. GitHub issues/new URLs get a prefilled title and environment details.",
@@ -6923,7 +6954,7 @@ Delete an unused Target
 
 Safety: **destructive** · Authentication: **required**
 
-Targets with Generation or release history, or an active release candidate, must be disabled instead.
+Deletes a Target with no Generation history, release history, or active Draft. Disable a Target instead if it has any of these.
 
 Input schema:
 
@@ -7217,6 +7248,13 @@ Input schema:
                 "update_notice": {
                   "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
                   "type": "boolean"
+                },
+                "changelog_url": {
+                  "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "support_url": {
                   "description": "Where the generated CLI's feedback command sends users. GitHub issues/new URLs get a prefilled title and environment details.",
@@ -8261,7 +8299,7 @@ Retrieve a Target's rolling Draft release
 
 Safety: **read** · Authentication: **required**
 
-Returns Current, the cumulative Draft version and readiness, its exact head, and the optimistic release revision.
+Returns Current's version, the proposed Draft version, readiness, and commit. Pass `revision` as `expected_revision` when updating the Draft to avoid changing a newer candidate.
 
 Input schema:
 
@@ -8449,7 +8487,7 @@ Select an exact Draft version or return to automatic versioning
 
 Safety: **write** · Authentication: **required**
 
-Validates the selection against the cumulative required bump and regenerates the same rolling Draft pull request.
+Checks your version choice against the required version bump, then regenerates the existing Draft pull request.
 
 Input schema:
 
@@ -8650,7 +8688,7 @@ Inspect preserved custom code for a Target Draft
 
 Safety: **read** · Authentication: **required**
 
-Returns the exact immutable three-way input identities, customer changes, conflicts, reused resolutions, combined-package hashes, and checks. File contents are not returned.
+Returns preserved changes, conflicts, reused resolutions, and check results for the Draft. Includes the input and package identifiers needed to compare attempts. Does not include file contents.
 
 Input schema:
 
@@ -9180,7 +9218,7 @@ Resolve or reset custom code on the rolling Draft
 
 Safety: **write** · Authentication: **required**
 
-Resets selected or all custom paths, selects either exact side of conflicts, and reruns the three-way integration on the same protected Draft. The expected head prevents applying a stale choice.
+Keeps the current or generated side of selected conflicts, or resets all customizations. Reruns integration and checks on the same Draft. Supply the expected head revision to prevent a stale choice from changing a newer Draft.
 
 Input schema:
 
@@ -9792,7 +9830,7 @@ Adopt a verified existing package as Current
 
 Safety: **write** · Authentication: **required**
 
-Verifies the repository tag, package metadata, and registry artifact; records an Imported Current release; then opens the first Typeship Draft at the next major version because no trusted generated baseline exists yet.
+Checks the repository tag, package metadata, and registry artifact, then records the package as an Imported Current release. Opens the first Typeship Draft at the next major version; review it to establish the baseline for preserving existing code.
 
 Input schema:
 
@@ -10720,7 +10758,7 @@ Retry publication of an exact Target release
 
 Safety: **write** · Authentication: **required**
 
-Dispatches the repository-owned republish workflow for this immutable version and accepted commit. It never selects the latest Draft or release.
+Retries publication of the specified release through its repository workflow. Uses that release's version and accepted commit, even if a newer Draft or release exists.
 
 Input schema:
 
@@ -11183,7 +11221,7 @@ Retrieve a generation
 
 Safety: **read** · Authentication: **required**
 
-Includes the generated files when the generation succeeded.
+Returns the Generation result. Successful results include files, or a file index when the package is too large to inline.
 
 Input schema:
 
@@ -11429,7 +11467,7 @@ Fetch one file from a generation
 
 Safety: **read** · Authentication: **required**
 
-Raw file content, for generations whose target was too large to inline (files_omitted true). The generation's files_index lists valid paths.
+Returns one file's raw content. Use a path from `files_index` when the Generation reports `files_omitted: true`.
 
 Input schema:
 
@@ -11489,7 +11527,7 @@ List Definition Revisions
 
 Safety: **read** · Authentication: **required**
 
-Immutable snapshots of the complete resolved document graph this Definition observed, newest first. Content is available from the revision and document endpoints and is never embedded in a list response.
+Lists the Definition's revisions, newest first. Source content is not included; retrieve the revision content or individual documents separately.
 
 Input schema:
 
@@ -11704,7 +11742,7 @@ Retrieve a Definition Revision
 
 Safety: **read** · Authentication: **required**
 
-Metadata for one immutable resolved document graph. Fetch its canonical content or individual source documents from the content endpoints.
+Returns metadata for a saved Definition Revision. Retrieve its resolved content or individual source documents separately.
 
 Input schema:
 
@@ -11921,7 +11959,7 @@ Retrieve a Definition Revision's canonical content
 
 Safety: **read** · Authentication: **required**
 
-Returns the exact canonical resolved content identified by the revision's graph digest, suitable for saving or piping into a diff.
+Returns the saved, resolved content for this revision. Save it locally or compare it with another revision.
 
 Input schema:
 
@@ -12035,8 +12073,7 @@ The account behind the presented credentials
 
 Safety: **read** · Authentication: **required**
 
-Returns the account that owns the presented API key. This is also the
-identity endpoint the generated typeship CLI's `whoami` calls.
+Returns the account associated with your credential. The Typeship CLI uses this endpoint for `whoami`.
 
 Input schema:
 
@@ -12123,7 +12160,7 @@ List API keys
 
 Safety: **read** · Authentication: **required**
 
-Keys are never returned in full — only their identity and last four. Creation stays in the console deliberately: a leaked key that can mint more keys is a leaked account.
+Lists key metadata and the last four characters of each key. Full keys are not returned. Create keys in the Console.
 
 Input schema:
 
@@ -12243,7 +12280,9 @@ Revoke an API key
 
 Safety: **destructive** · Authentication: **required**
 
-Idempotent: revoking an already-revoked key returns the same body, so a rotation script that re-runs does not have to special-case having already succeeded. An OAuth member may revoke a key they created; an organization admin may revoke any key. Organization API keys retain account-wide authority.
+Revokes a key. Repeating the request returns the same result.
+
+With OAuth, members can revoke their own keys; organization admins can revoke any key. Organization API keys can revoke any key in their account.
 
 Input schema:
 
