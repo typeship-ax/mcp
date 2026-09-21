@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "target_id": "tgt_44d0824c279aca01",
+  "output": "mcp",
+  "directory": "",
+  "tools": {
+    "node": "24.18.0",
+    "python": "3.11.15",
+    "go": "1.23"
+  },
+  "checks": [
+    {
+      "name": "build",
+      "command": "npm install --no-audit --no-fund && npm run build --if-present"
+    },
+    {
+      "name": "package",
+      "command": "npm pack --dry-run"
+    },
+    {
+      "name": "public_entrypoint",
+      "command": "node -e \"const p=require('./package.json');let e=typeof p.exports==='string'?p.exports:(p.exports&&p.exports['.']);e=typeof e==='string'?e:(e&&((e.import||e.require||e.default)));e=e||p.module||p.main;if(!e)throw Error('package has no public entry point');import(require('url').pathToFileURL(require('path').resolve(e)).href)\""
+    }
+  ]
+}
