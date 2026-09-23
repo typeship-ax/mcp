@@ -1,6 +1,6 @@
 # typeship — agent context
 
-This package contains the generated MCP server for **typeship** (API v1.0.0, package v0.16.0).
+This package contains the generated MCP server for **typeship** (API v1.0.0, package v0.17.0).
 
 Resolve an OpenAPI or GraphQL Definition, diagnose it, and keep every
 selected CLI, MCP, and SDK Target current.
