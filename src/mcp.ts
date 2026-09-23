@@ -42,7 +42,7 @@ export { McpAccountLinkRequired } from "./mcp-protocol.js";
 const BIN = "typeship";
 const PKG_NAME = "@typeship-ax/mcp";
 const SERVER_NAME = "typeship-mcp";
-const SERVER_VERSION = "0.13.0";
+const SERVER_VERSION = "0.13.1";
 /** The MCP client's announced name (clientInfo in request _meta), for the User-Agent. */
 let MCP_CLIENT_NAME: string | null = null;
 function noteClientInfo(message: unknown): void {
