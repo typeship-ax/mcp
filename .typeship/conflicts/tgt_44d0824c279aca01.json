@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "target_id": "tgt_44d0824c279aca01",
-  "attempt_id": "int_j1a0w3d7z6a87153",
+  "attempt_id": "int_adere97il742idmk",
   "current_release_id": "rel_b7koamx3tv4shym2",
   "previous_generation_id": "gen_lai3sr92n8jlmdel",
   "previous_generated_snapshot_id": "snap_6kbkmz5fflj83brf",
   "previous_combined_snapshot_id": "snap_ta6kuy3cr90d46uc",
-  "current_snapshot_id": "snap_wz7bu553j5jhizdw",
-  "next_generation_id": "gen_s5gjx21aobll427i",
-  "next_generated_snapshot_id": "snap_ekr77n6apavo3bb1",
+  "current_snapshot_id": "snap_vtc85u4msatqlejh",
+  "next_generation_id": "gen_yc0u33lcd7z0w0jn",
+  "next_generated_snapshot_id": "snap_76ybayvi258m7dsu",
   "default_revision": "410437abd5ca0c1f5a8c2f9d59dd56c2c6e703e9",
-  "draft_revision": "4b52890de98ff873edb766a285105bacf0d233cd",
+  "draft_revision": "8d744ac576884964b32294123bbc3ada500e20cf",
   "conflict_stage": "generation",
   "conflicts": [
     {
       "path": "api.md",
       "kind": "overlapping_text",
-      "fingerprint": "sha256:afd59fb6830c0d8e59fb46c52727c2339bca0de94137d0ed6c728e7673940631",
+      "fingerprint": "sha256:94a904252047e5e186a9aab5b2bca8eaadc759e69c01707016c4739f2477fb8c",
       "previous": {
         "present": true,
         "mode": "100644",
@@ -30,7 +30,7 @@
       "next": {
         "present": true,
         "mode": "100644",
-        "hash": "sha256:a6cee04e741d54005a73c4c206f8054e7cddcaf8ba51273c4ba65087dcf981ac"
+        "hash": "sha256:bb5df4b09e884ad1cad5ba4e52eac5b9ad8bc1e00bb1ac6045751f04f4715f39"
       }
     }
   ]
