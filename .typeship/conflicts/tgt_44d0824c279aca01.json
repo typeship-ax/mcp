@@ -1,16 +1,16 @@
 {
   "schema": 2,
   "target_id": "tgt_44d0824c279aca01",
-  "attempt_id": "int_td44x866tel9wix9",
+  "attempt_id": "int_ze0oovirlavq2icv",
   "current_release_id": "rel_b7koamx3tv4shym2",
   "previous_generation_id": "gen_lai3sr92n8jlmdel",
   "previous_generated_snapshot_id": "snap_6kbkmz5fflj83brf",
   "previous_combined_snapshot_id": "snap_ta6kuy3cr90d46uc",
-  "current_snapshot_id": "snap_vns4cc3wh7wn65yx",
-  "next_generation_id": "gen_8hmqjf6j674m67a5",
-  "next_generated_snapshot_id": "snap_alcmg8z1hrw6vlam",
+  "current_snapshot_id": "snap_1oa9g0cv06r6jatw",
+  "next_generation_id": "gen_6zv5danu9637ebkz",
+  "next_generated_snapshot_id": "snap_blqr1tgdt77st04p",
   "default_revision": "410437abd5ca0c1f5a8c2f9d59dd56c2c6e703e9",
-  "draft_revision": "1ecf20a12b66af51683adf14bdb51bd003af4264",
+  "draft_revision": "691164e1bbaa0b305925ada84f59dadccfc42c4f",
   "conflict_stage": "generation",
   "conflicts": [
     {
