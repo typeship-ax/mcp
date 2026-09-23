@@ -1599,7 +1599,7 @@ Input schema:
             ]
           },
           "checks": {
-            "description": "Required checks run against the complete combined package. Generated checks and customer commands share one reproducible workflow; repository_required names existing repository checks.",
+            "description": "Required checks run against the complete combined package. Generated checks and customer commands share one reproducible workflow; repository_required names existing repository checks. Supplying checks replaces all settings. Omitted generated restores build, package, and public_entrypoint; omitted repository_required and customer restore empty lists. An empty object restores these defaults. An empty array clears the corresponding list.",
             "properties": {
               "generated": {
                 "default": [
@@ -2544,6 +2544,9 @@ Update a project
 `PATCH /projects/{project_id}`
 
 Safety: **write** · Authentication: **required**
+
+Omitted fields keep their current values. A supplied config replaces the entire stored object; null or an empty object clears it.
+Updates have no revision precondition. Concurrent updates preserve omitted fields, and the last saved update to a supplied field wins.
 
 A `502` response means the Project was saved, but an obsolete release pull request could not be retired.
 
@@ -5823,7 +5826,7 @@ Output schema:
             "type": "integer"
           },
           "checks": {
-            "description": "Required checks run against the complete combined package. Generated checks and customer commands share one reproducible workflow; repository_required names existing repository checks.",
+            "description": "Required checks run against the complete combined package. Generated checks and customer commands share one reproducible workflow; repository_required names existing repository checks. Supplying checks replaces all settings. Omitted generated restores build, package, and public_entrypoint; omitted repository_required and customer restore empty lists. An empty object restores these defaults. An empty array clears the corresponding list.",
             "properties": {
               "generated": {
                 "default": [
@@ -6066,7 +6069,7 @@ Input schema:
       ]
     },
     "checks": {
-      "description": "Required checks run against the complete combined package. Generated checks and customer commands share one reproducible workflow; repository_required names existing repository checks.",
+      "description": "Required checks run against the complete combined package. Generated checks and customer commands share one reproducible workflow; repository_required names existing repository checks. Supplying checks replaces all settings. Omitted generated restores build, package, and public_entrypoint; omitted repository_required and customer restore empty lists. An empty object restores these defaults. An empty array clears the corresponding list.",
       "properties": {
         "generated": {
           "default": [
@@ -7269,6 +7272,10 @@ Update a Target, its Deliveries, or its next reviewed version
 
 Safety: **write** · Authentication: **required**
 
+Omitted fields keep their current values. Supplied config, checks, and deliveries replace their complete stored values.
+Updates have no revision precondition. Concurrent updates preserve omitted fields, and the last saved update to a supplied field wins.
+Send proposed_version by itself; use the Draft endpoint for a version selection with an optional revision precondition.
+
 A `502` response means the selected version was saved, but regeneration failed.
 
 Input schema:
@@ -7309,13 +7316,14 @@ Input schema:
       "type": "string"
     },
     "proposed_version": {
+      "description": "Send only this field to select an exact SemVer, or null for automatic selection. Use the Draft endpoint for an optional revision precondition.",
       "type": [
         "string",
         "null"
       ]
     },
     "checks": {
-      "description": "Required checks run against the complete combined package. Generated checks and customer commands share one reproducible workflow; repository_required names existing repository checks.",
+      "description": "Required checks run against the complete combined package. Generated checks and customer commands share one reproducible workflow; repository_required names existing repository checks. Supplying checks replaces all settings. Omitted generated restores build, package, and public_entrypoint; omitted repository_required and customer restore empty lists. An empty object restores these defaults. An empty array clears the corresponding list.",
       "properties": {
         "generated": {
           "default": [
@@ -7373,7 +7381,7 @@ Input schema:
       "type": "object"
     },
     "config": {
-      "description": "Target-specific overrides merged over Project.config. GraphQL settings are rejected here and belong to the Definition.",
+      "description": "Replaces the complete stored override object. Send null or an empty object to resume Project inheritance. Effective values merge over Project.config; GraphQL settings belong to the Definition.",
       "anyOf": [
         {
           "description": "Target-specific generation and delivery overrides. Authentication may only select a Project-owned OAuth application. OAuth server metadata, applications, and identity policy remain Project-owned. Self-hosted MCP access may be overridden for a Target-specific deployment.",
@@ -8749,6 +8757,9 @@ Safety: **write** · Authentication: **required**
 
 Checks your version choice against the required version bump, then regenerates the existing Draft pull request.
 
+Send the last read revision as expected_revision to reject an intervening change with 409 stale_release_revision before saving or regenerating.
+The precondition is optional; omitting it applies the selection to the current Draft. Version is required; null restores automatic selection.
+
 A `502` response means the selected version was saved, but regeneration failed.
 
 Input schema:
@@ -8774,6 +8785,7 @@ Input schema:
       "example": "1.1.0"
     },
     "expected_revision": {
+      "description": "Optional revision from the last Draft read. An intervening change returns 409 stale_release_revision without saving or regenerating. Omit to apply the selection without this precondition.",
       "minimum": 0,
       "type": "integer",
       "example": 2
