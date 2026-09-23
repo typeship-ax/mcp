@@ -10,6 +10,7 @@ import {
   ValidationError,
   BadRequestError,
   ForbiddenError,
+  InternalServerError,
   NotFoundError,
   RateLimitedError,
   UnauthorizedError,
@@ -48,6 +49,7 @@ export class ApiKeysResource {
         "401": UnauthorizedError,
         "403": ForbiddenError,
         "429": RateLimitedError,
+        "500": InternalServerError,
       },
       idempotent: true,
       schemaKey: "apiKeys.list",
@@ -84,6 +86,7 @@ export class ApiKeysResource {
         "403": ForbiddenError,
         "404": NotFoundError,
         "429": RateLimitedError,
+        "500": InternalServerError,
       },
       idempotent: true,
       schemaKey: "apiKeys.revoke",
@@ -93,11 +96,18 @@ export class ApiKeysResource {
 }
 
 export interface ApiKeysListParams {
-  /** Maximum number of resources to return. */
+  /**
+   * Maximum number of resources to return. Omit for 20; otherwise supply base-10 digits
+   * representing an integer from 1 to 100. Empty, malformed, or out-of-range values return 400
+   * invalid_request. List query parameters must appear only once; unrecognized parameters also
+   * return 400.
+   */
   limit?: number;
   /**
    * Opaque cursor from the preceding page's next_cursor. Valid only for the same account,
-   * operation, filters, and ordering that issued it.
+   * operation, filters, and ordering that issued it. Omit to start at the first page. Empty,
+   * malformed, or repeated cursors return 400 invalid_request. The page limit may change between
+   * requests.
    */
   cursor?: string;
 }
@@ -108,6 +118,7 @@ export type ApiKeysListError =
   | UnauthorizedError
   | ForbiddenError
   | RateLimitedError
+  | InternalServerError
   | UnexpectedApiError
   | ResponseParseError
   | TransportError
@@ -119,6 +130,7 @@ export type ApiKeysRevokeError =
   | ForbiddenError
   | NotFoundError
   | RateLimitedError
+  | InternalServerError
   | UnexpectedApiError
   | ResponseParseError
   | TransportError
