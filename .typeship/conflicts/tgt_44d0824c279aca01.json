@@ -1,22 +1,62 @@
 {
   "schema": 2,
   "target_id": "tgt_44d0824c279aca01",
-  "attempt_id": "int_jptwcs31nphg1ppx",
+  "attempt_id": "int_snvn8cf3mmofi5mz",
   "current_release_id": "rel_mt4bb0ldaycms2d9",
   "previous_generation_id": "gen_l5vqcekkz6ydmk6c",
   "previous_generated_snapshot_id": "snap_ouxup7plryeubbk6",
   "previous_combined_snapshot_id": "snap_cdquean87m4xl8se",
-  "current_snapshot_id": "snap_kcw2yncbrhra5gyc",
-  "next_generation_id": "gen_kz62ajupqzyx0sud",
-  "next_generated_snapshot_id": "snap_tu4vpbwbh2bbxg8k",
+  "current_snapshot_id": "snap_qrejquu10vhrs0dc",
+  "next_generation_id": "gen_6ncp6rl1x7um8o0c",
+  "next_generated_snapshot_id": "snap_70iblwmdh3ujab12",
   "default_revision": "08b6a28c7ec598ba98f064110f44a51343a05fa5",
-  "draft_revision": "22788d107d8b9d086fd741cd0c6b607d3099b54c",
+  "draft_revision": "3d60fceae6c1bdf4c3ad720a7ade3cc5c5c1d3e8",
   "conflict_stage": "generation",
   "conflicts": [
     {
+      "path": "AGENTS.md",
+      "kind": "overlapping_text",
+      "fingerprint": "sha256:8abadc9b422208f4fe865009f30edf03d80542feebfac43fe581e6be948cee5e",
+      "previous": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:b7fdfbfe2fe0646e9e0be880b7f23028a015b1bac02ca288029394ab92107b6a"
+      },
+      "current": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:96fe00dee063421f3bfc951be0e53a628c9699e0d8528cf2d22f227be7e4dc04"
+      },
+      "next": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:13f0f9d410eb089319d93919ce2c2111140568c3b938fa6cbf6bcddd50aa8718"
+      }
+    },
+    {
+      "path": "README.md",
+      "kind": "overlapping_text",
+      "fingerprint": "sha256:e11c049abd49b32a1919473bcb1981dfd87e076bc2c15b7ab4b7cb31f45b9889",
+      "previous": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:8900ca33728c73323ba4613cda7801595ee912d1fcb996c30bf32e2e9182485c"
+      },
+      "current": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:8b8972adaeb106b0e9908b9035ab885382c0ae4d55f787eafdfbff561e4c71ac"
+      },
+      "next": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:c0219ab114cc2f1d21e53617e42de3590922b45ac71be992b9ed83fcf8f90f5c"
+      }
+    },
+    {
       "path": "api.md",
       "kind": "overlapping_text",
-      "fingerprint": "sha256:c69d60c67b8a6964fc5dcf5cd2fdc9b8b497b07e4e3ebfc6c86b43c9a00ba788",
+      "fingerprint": "sha256:1144de06d47d69cb1311b3ffe13494ffdcf0aa663f3f1436ca26414c35b74e87",
       "previous": {
         "present": true,
         "mode": "100644",
@@ -30,7 +70,87 @@
       "next": {
         "present": true,
         "mode": "100644",
-        "hash": "sha256:ef0508861b833d97fb69e9c63b741ebafb7e536e27b45077acf39dd1b75ddc83"
+        "hash": "sha256:34b9cf978dbd35eed5863272c496469a648f5ae5bc1adb60b6e2d3d98f969bbd"
+      }
+    },
+    {
+      "path": "package.json",
+      "kind": "overlapping_text",
+      "fingerprint": "sha256:f6c423fe3e49cf48646154e777d148f6f70681f3238139c79a0475bbd360aba9",
+      "previous": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:e888185e79b31ee308e3444b583b788ac55f554ea4e9e2f56cb1f978cc893fe7"
+      },
+      "current": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:31fee43363f00201efaf0c1c1501812300f00ee89f09445e821cdadd11e5e101"
+      },
+      "next": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:ee6ed719879185559a5881620d2ec1620aeb3403261b0b70035f95096020138c"
+      }
+    },
+    {
+      "path": "server.json",
+      "kind": "overlapping_text",
+      "fingerprint": "sha256:02f4ab9d9158f23b7255ad3453fb12f916535905adb15539b5df43f506e0b232",
+      "previous": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:534c8eae42fb37f040743815bd42ce6ec58d7d30e4876cedcce66c3584ab54c6"
+      },
+      "current": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:70f353395dee7fb8309a44248a4e1cd53afb8b475d541840f4f2d63a679efbb6"
+      },
+      "next": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:9e51aa6e75b6f752c7b41c7a727dbd8bf65d1cc60877b8bad43607a1eeb4a57f"
+      }
+    },
+    {
+      "path": "src/index.ts",
+      "kind": "overlapping_text",
+      "fingerprint": "sha256:e41dfe06e96d92a888ade848efc675e25805edd7c8d3c9f8205ea24f5db5befa",
+      "previous": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:eb909fce20491e00a96f0aae8436564b59f50f8ca6dd0cd4f31c607412ebc030"
+      },
+      "current": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:435ecea9002dc507ca9b723ea1d25d7efd64d351782ccc19df950736fef79575"
+      },
+      "next": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:4e615a4ed91963fefd18460df97ede928bb6f0199f45cfbd56bba650fa2d4ce9"
+      }
+    },
+    {
+      "path": "src/mcp.ts",
+      "kind": "overlapping_text",
+      "fingerprint": "sha256:17c1673461e706724f46183991d41449ee514daa784af77d18532b81f7e13184",
+      "previous": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:2781014d741b2bc3906805ee0fe72b79b89f5eb19d644e94e0937d5d76deca6a"
+      },
+      "current": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:7424fad918ff4c9aaf72eb7579be1b35446697967c48c5d82593d1d3704a4a7a"
+      },
+      "next": {
+        "present": true,
+        "mode": "100644",
+        "hash": "sha256:40f442119dc624f69c3f2b3973ffd4d5737e0ef396f754bada26e0d02a969499"
       }
     }
   ]
