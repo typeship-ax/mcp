@@ -20,6 +20,10 @@
     {
       "name": "public_entrypoint",
       "command": "node -e \"const p=require('./package.json');if(!p.name||!p.exports||!p.exports['./mcp'])throw Error('package has no public MCP entry point');import(p.name+'/mcp')\""
+    },
+    {
+      "name": "generated_surface",
+      "command": "node \".typeship/targets/tgt_44d0824c279aca01-surface.mjs\""
     }
   ]
 }
