@@ -176,7 +176,8 @@ async function callOperationRaw(op: OpSpec, rawArgs: Record<string, unknown>, re
   const { args, fields, maxChars } = prepared.call;
   const values: Record<string, unknown> = {};
   for (const p of op.params) {
-    if (args[p.name] !== undefined) values[p.name] = args[p.name];
+    const argument = p.kind === "header" && p.name === "If-Match" ? "if_match" : p.name;
+    if (args[argument] !== undefined) values[p.name] = args[argument];
   }
   // File arguments are local paths on this machine; unreadable ones are
   // argument errors, reported before anything is sent.
@@ -280,7 +281,12 @@ const LOCAL_CREDENTIALS = LOCAL_PROCESS && !ARGV.includes("--http");
  * only on a local server (mcpExposed), writes are out under --read-only,
  * and --tools narrows to a subset. A hidden operation is unknown to
  * tools/call and execute alike. */
-const MCP_OPS = visibleOps(OPS as unknown as OpLike[], { readOnly: READ_ONLY, include: INCLUDE, uploads: LOCAL_PROCESS }) as unknown as OpSpec[];
+const MCP_OPS = (visibleOps(OPS as unknown as OpLike[], { readOnly: READ_ONLY, include: INCLUDE, uploads: LOCAL_PROCESS }) as unknown as OpSpec[]).map((op) => {
+  const properties = op.inputSchema.properties as Record<string, unknown> | undefined;
+  if (!properties || !Object.hasOwn(properties, "If-Match")) return op;
+  const { ["If-Match"]: ifMatch, ...rest } = properties;
+  return { ...op, inputSchema: { ...op.inputSchema, properties: { ...rest, if_match: ifMatch } } };
+});
 const HIDDEN_WRITES = READ_ONLY ? visibleOps(OPS as unknown as OpLike[], { include: INCLUDE, uploads: LOCAL_PROCESS }).length - MCP_OPS.length : 0;
 const HAS_UPLOADS = MCP_OPS.some((op) => op.bodyKind === "multipart" || op.bodyKind === "binary");
 
