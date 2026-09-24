@@ -2,9 +2,9 @@
 
 MCP server for typeship. [API reference](./api.md)
 
-Generated from the OpenAPI spec by [typeship](https://typeship.dev). Change the spec or generation settings, then regenerate; generated files are not hand-edited.
+Generated from the OpenAPI spec by [typeship](https://typeship.dev).
 
-- **Zero runtime dependencies** — built on the platform `fetch` in Node 18+
+- **Zero runtime dependencies** — built on the platform `fetch` in Node 20+
 - **Agent-ready MCP** — schema-derived tools, argument validation, read-only mode, and bounded results
 
 ## Build from source
@@ -16,7 +16,7 @@ npm install
 npm run build
 ```
 
-Requires Node.js 18+. The package is ESM.
+Requires Node.js 20+. The package is ESM.
 
 To run the local MCP server, configure your MCP client with `node` and the absolute path to `dist/mcp.js`, as shown below. The server communicates over stdio.
 
@@ -25,8 +25,12 @@ To run the local MCP server, configure your MCP client with `node` and the absol
 Generation does not publish a package. Before using the registry command below, confirm `name` and `version` in `package.json`, publish under a name you control, and verify that release is available on npm.
 
 ```sh
-npm install --global @typeship-ax/mcp@0.18.1
+npm install --global @typeship-ax/mcp@0.19.0
 ```
+
+## MCP client requirements
+
+Connect with your client's default settings. This server supports MCP `2025-11-25` and `2026-07-28` automatically; no protocol environment variables are required. After registering it, run `claude mcp list` to verify a Claude Code connection.
 
 ## Connect after publishing
 
@@ -34,7 +38,7 @@ The npm connections below require `@typeship-ax/mcp` to be published under your 
 
 Authentication: provide `TYPESHIP_TOKEN` through the MCP client's environment or secret settings. Keep credential values out of URLs and command arguments.
 
-> **Cursor:** Cursor 3.2 is not supported: it opens with the legacy initialize handshake, while this server speaks MCP 2026-07-28.
+For Cursor, merge a local or remote server entry from this README into `mcpServers` in `.cursor/mcp.json`, then enable the server in Cursor’s MCP settings.
 
 ### Local
 
@@ -81,6 +85,13 @@ A zero-dependency stdio server exposing a compact discovery surface: `search_doc
 ```
 
 Replace the path with the absolute path to this package's built `dist/mcp.js`.
+
+For Claude Code, you can register the local build from the shell configured above:
+
+```sh
+claude mcp add --transport stdio typeship -- node /absolute/path/to/package/dist/mcp.js
+claude mcp list
+```
 
 Replace the credential placeholder using the MCP client's secret storage when it has one. The local server reads `TYPESHIP_TOKEN` from its environment; credentials never belong in command arguments. If you also generated the CLI, its `typeship login` command stores credentials the local MCP server can reuse.
 
