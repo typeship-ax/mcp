@@ -9523,7 +9523,7 @@ Output schema:
 
 Retrieve an immutable Target release
 
-`GET /target_releases/{target_release_id}`
+`GET /target-releases/{target_release_id}`
 
 Safety: **read** · Authentication: **required**
 
@@ -9910,7 +9910,7 @@ Output schema:
 
 Retry publication of an exact Target release
 
-`POST /target_releases/{target_release_id}/republish`
+`POST /target-releases/{target_release_id}/republish`
 
 Safety: **write** · Authentication: **required**
 
@@ -11866,7 +11866,7 @@ Results contain `items` and `hasMore`. When another page exists, `nextPage` cont
 
 Retrieve a Definition Revision
 
-`GET /definition_revisions/{definition_revision_id}`
+`GET /definition-revisions/{definition_revision_id}`
 
 Safety: **read** · Authentication: **required**
 
@@ -12083,7 +12083,7 @@ Output schema:
 
 Retrieve a Definition Revision's canonical content
 
-`GET /definition_revisions/{definition_revision_id}/content`
+`GET /definition-revisions/{definition_revision_id}/content`
 
 Safety: **read** · Authentication: **required**
 
@@ -12135,7 +12135,7 @@ Example `tools/call` parameters:
 
 Retrieve one source document from a Definition Revision
 
-`GET /definition_revisions/{definition_revision_id}/documents/{document_id}/content`
+`GET /definition-revisions/{definition_revision_id}/documents/{document_id}/content`
 
 Safety: **read** · Authentication: **required**
 
@@ -12284,7 +12284,7 @@ Output schema:
 
 List API keys
 
-`GET /api_keys`
+`GET /api-keys`
 
 Safety: **read** · Authentication: **required**
 
@@ -12407,7 +12407,7 @@ Results contain `items` and `hasMore`. When another page exists, `nextPage` cont
 
 Revoke an API key
 
-`DELETE /api_keys/{api_key_id}`
+`DELETE /api-keys/{api_key_id}`
 
 Safety: **destructive** · Authentication: **required**
 
