@@ -1243,26 +1243,24 @@ export function argumentsError(op: { tool: string }, issues: ArgumentIssue[]): T
 // ---- results: projection, size cap, envelopes ------------------------------------
 
 /** Keep only `paths` of a value: arrays item by item, objects by dotted
- * path; scalars untouched. Same rule as the CLI's --fields. */
+ * path, including paths through arrays (`items.id` keeps each item's id);
+ * scalars untouched. Same rule as the CLI's --fields. */
 export function projectFields(value: unknown, paths: string[][] | null): unknown {
   if (paths === null) return value;
   if (Array.isArray(value)) return value.map((v) => projectFields(v, paths));
   if (value === null || typeof value !== "object") return value;
+  const groups = new Map<string, string[][]>();
+  for (const [key, ...rest] of paths) {
+    if (key === undefined) continue;
+    const group = groups.get(key);
+    if (group) group.push(rest); else groups.set(key, [rest]);
+  }
   const out: Record<string, unknown> = {};
-  for (const path of paths) {
-    let cursor: unknown = value;
-    for (const key of path) {
-      if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) { cursor = undefined; break; }
-      cursor = (cursor as Record<string, unknown>)[key];
-    }
-    if (cursor === undefined) continue;
-    let target = out;
-    for (const key of path.slice(0, -1)) {
-      const next = target[key];
-      if (next === undefined || next === null || typeof next !== "object" || Array.isArray(next)) target[key] = {};
-      target = target[key] as Record<string, unknown>;
-    }
-    target[path[path.length - 1]!] = cursor;
+  for (const [key, rests] of groups) {
+    const child = (value as Record<string, unknown>)[key];
+    if (child === undefined) continue;
+    if (rests.some((rest) => rest.length === 0)) out[key] = child;
+    else if (child !== null && typeof child === "object") out[key] = projectFields(child, rests);
   }
   return out;
 }
@@ -1354,8 +1352,9 @@ export function pageOutcome(items: unknown[], nextPage: Record<string, unknown> 
 }
 
 /** Placeholder for a value cut from an oversized object result. */
-const omittedMarker = (key: string, chars: number) =>
-  "[omitted: " + chars.toLocaleString("en-US") + " characters. Pass fields=[\"" + key + "\"] to fetch this key alone.]";
+const omittedMarker = (key: string, chars: number, maxChars: number) => chars > maxChars
+  ? "[omitted: " + chars.toLocaleString("en-US") + " characters, more than the cap on its own. Pass fields with dotted paths inside it, such as [\"" + key + ".id\"], or request a smaller page.]"
+  : "[omitted: " + chars.toLocaleString("en-US") + " characters. Pass fields=[\"" + key + "\"] to fetch this key alone.]";
 
 export function dataOutcome(data: unknown, options: ResultOptions = {}): ToolOutcome {
   const fields = options.fields ?? null;
@@ -1394,7 +1393,7 @@ export function dataOutcome(data: unknown, options: ResultOptions = {}): ToolOut
     for (const e of entries) if (!cut.has(e.key)) out[e.key] = e.v;
     out.truncated = {
       omitted_keys: [...cut.keys()],
-      omitted: Object.fromEntries([...cut].map(([key, chars]) => [key, omittedMarker(key, chars)])),
+      omitted: Object.fromEntries([...cut].map(([key, chars]) => [key, omittedMarker(key, chars, maxChars)])),
       reason: "The result is " + text.length.toLocaleString("en-US") + " characters; results are capped at " + maxChars.toLocaleString("en-US") + ".",
       next_steps: [fieldsHint(false)],
     };

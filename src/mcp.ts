@@ -48,7 +48,7 @@ let MCP_CLIENT_NAME: string | null = null;
 function noteClientInfo(message: unknown): void {
   const meta = (message as { params?: { _meta?: Record<string, { name?: unknown }> } } | null)?.params?._meta;
   const name = meta?.["io.modelcontextprotocol/clientInfo"]?.name;
-  if (typeof name === "string" && name && name !== MCP_CLIENT_NAME) { MCP_CLIENT_NAME = name.slice(0, 60); }
+  if (typeof name === "string" && name) { MCP_CLIENT_NAME = name.replace(/[\s;()]+/g, "_").slice(0, 60); }
 }
 const DEFAULT_BASE_URL = "https://typeship.dev/api/v1";
 const NAMED_SCHEMES: CredentialSchemes = {"apiKey":{"kind":"bearer","options":["bearerToken"]}};
@@ -146,7 +146,7 @@ function makeClient(op: OpSpec): TypeshipClient {
     options.debug = (event: DebugEvent) => process.stderr.write(formatDebugEvent(BIN + "-mcp", event) + "\n");
   }
   // The local MCP server identifies itself (surface + the client it serves, when announced).
-  options.defaultHeaders = { "User-Agent": PKG_NAME + "-mcp/" + SERVER_VERSION + " (typeship" + (MCP_CLIENT_NAME ? "; client=" + MCP_CLIENT_NAME : "") + ")" };
+  options.defaultHeaders = { "User-Agent": PKG_NAME + "-mcp/" + SERVER_VERSION + (MCP_CLIENT_NAME ? " (client=" + MCP_CLIENT_NAME + ")" : "") };
   // Keep the SDK's machine-token cache while re-evaluating local configuration.
   const key = createHash("sha256").update(JSON.stringify([options, config, profile?.name, stored?.oauth?.sessionId, null, process.env["TYPESHIP_DEBUG"]])).digest("hex");
   if (clientInstance && clientKey === key) return clientInstance;
