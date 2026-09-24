@@ -206,8 +206,19 @@ async function callOperationRaw(op: OpSpec, rawArgs: Record<string, unknown>, re
   const shape = { fields, maxChars, pagination: op.pagination, args };
   try {
     const target = (client as unknown as Record<string, Record<string, (...a: unknown[]) => unknown>>)[op.resource]!;
-    const result = await (target[op.method]!(...callArgs) as Promise<{ ok: boolean; data?: unknown; error?: unknown; response?: { requestId?: string } }>);
+    let result = await (target[op.method]!(...callArgs) as Promise<{ ok: boolean; data?: unknown; error?: unknown; response?: { requestId?: string } }>);
     if (!result.ok) return errorOutcome(result.error, errorContext);
+    if (op.httpMethod === "POST" && op.path === "/projects/{project_id}/generations") {
+      const batch = result.data as { data: Array<{ id: string }> };
+      const generations = (client as unknown as { generations: { wait(id: string): Promise<{ ok: boolean; data?: unknown; error?: unknown }> } }).generations;
+      const completed: unknown[] = [];
+      for (const generation of batch.data) {
+        const waited = await generations.wait(generation.id);
+        if (!waited.ok) return errorOutcome(waited.error, errorContext);
+        completed.push(waited.data);
+      }
+      result = { ...result, data: { ...batch, data: completed } };
+    }
     if (op.paginated) {
       const page = result.data as { items: unknown[]; nextPageParams(): Record<string, unknown> | null; response: { requestId?: string } };
       return pageOutcome(page.items, page.nextPageParams(), { ...shape, requestId: page.response.requestId });

@@ -48,6 +48,7 @@ export const SCHEMAS: Record<string, { req?: unknown; res?: unknown }> = {
   "definitionRevisions.retrieveDocument": {"res":{"$ref":"res:DefinitionDocumentResponse"}},
   "account.retrieve": {"res":{"$ref":"res:Account"}},
   "apiKeys.list": {"res":{"$ref":"res:ApiKeyList"}},
+  "apiKeys.retrieve": {"res":{"$ref":"res:ApiKeyResponse"}},
   "apiKeys.revoke": {"res":{"$ref":"res:ApiKeyResponse"}},
 };
 

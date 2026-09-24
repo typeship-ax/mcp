@@ -41,7 +41,7 @@ Input schema:
       "maxLength": 255,
       "pattern": "^[!-~]+$",
       "type": "string",
-      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, If-Match header, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
     },
     "definition": {
       "description": "A Definition for one-shot generation, provided as exactly one URL or inline entrypoint.",
@@ -1346,7 +1346,7 @@ Input schema:
       "maxLength": 255,
       "pattern": "^[!-~]+$",
       "type": "string",
-      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, If-Match header, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
     },
     "name": {
       "minLength": 1,
@@ -2538,6 +2538,7 @@ Delete a project
 Safety: **destructive** · Authentication: **required**
 
 A `502` response means the Project was not deleted because its release pull requests could not be retired. Retry deletion to finish retiring the remaining reviews. Repeating a completed deletion returns `404`.
+See [conditional writes](https://typeship.dev/docs/typeship-api#conditional-writes) for ETag and If-Match.
 
 Input schema:
 
@@ -2552,6 +2553,12 @@ Input schema:
         "prj_4f8k2m7x9q1v6b3n"
       ],
       "type": "string"
+    },
+    "If-Match": {
+      "minLength": 1,
+      "maxLength": 1024,
+      "type": "string",
+      "description": "ETag from a preceding response. The write applies only if the resource still has that version; otherwise it returns 412 precondition_failed without changes. Omit to write the current version. See https://typeship.dev/docs/typeship-api#conditional-writes."
     },
     "fields": {
       "type": "array",
@@ -2625,9 +2632,11 @@ Update a project
 Safety: **write** · Authentication: **required**
 
 Omitted fields keep their current values. A supplied config replaces the entire stored object; null or an empty object clears it.
-Updates have no revision precondition. Concurrent updates preserve omitted fields, and the last saved update to a supplied field wins.
+Omitting If-Match applies the update to the current resource; with If-Match, a stale ETag returns 412 precondition_failed without saving.
 
+A `409 target_busy` means a Target is publishing. Retrieve the Project, wait for publication to finish, reconcile your update, and retry.
 A `502` response means the Project was saved, but an obsolete release pull request could not be retired. Retrieve the Project and retry the same update to finish retiring reviews if that update is still desired.
+See [conditional writes](https://typeship.dev/docs/typeship-api#conditional-writes) for ETag and If-Match.
 
 Input schema:
 
@@ -2642,6 +2651,12 @@ Input schema:
         "prj_4f8k2m7x9q1v6b3n"
       ],
       "type": "string"
+    },
+    "If-Match": {
+      "minLength": 1,
+      "maxLength": 1024,
+      "type": "string",
+      "description": "ETag from a preceding response. The write applies only if the resource still has that version; otherwise it returns 412 precondition_failed without changes. Omit to write the current version. See https://typeship.dev/docs/typeship-api#conditional-writes."
     },
     "name": {
       "minLength": 1,
@@ -3531,7 +3546,7 @@ Input schema:
       "maxLength": 255,
       "pattern": "^[!-~]+$",
       "type": "string",
-      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, If-Match header, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
     },
     "fields": {
       "type": "array",
@@ -3882,7 +3897,7 @@ Input schema:
       "maxLength": 255,
       "pattern": "^[!-~]+$",
       "type": "string",
-      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, If-Match header, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
     },
     "diagnostic_ids": {
       "description": "Stable IDs of current diagnostics whose exact patches should be reviewed and applied.",
@@ -4502,7 +4517,7 @@ Input schema:
       "maxLength": 255,
       "pattern": "^[!-~]+$",
       "type": "string",
-      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, If-Match header, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
     },
     "target_id": {
       "description": "Stable identifier for one configured generated product.",
@@ -5087,10 +5102,10 @@ Safety: **write** · Authentication: **required**
 
 Resolves the source documents before saving the update and records a new Definition Revision when the source changes.
 Omitted fields remain unchanged; supplied objects and arrays replace the whole field.
-No revision parameter or If-Match header is required. If the Definition or its Project
-configuration changes during validation, returns 409 definition_changed without saving
-the rejected update. Retrieve the current Definition and Project, reconcile your changes,
+If the Definition or its Project configuration changes during validation, returns 409 definition_changed without saving the rejected update. Retrieve the current Definition and Project, reconcile your changes,
 and submit a new request with a new Idempotency-Key if using one.
+
+See [conditional writes](https://typeship.dev/docs/typeship-api#conditional-writes) for ETag and If-Match.
 
 Input schema:
 
@@ -5106,12 +5121,18 @@ Input schema:
       "pattern": "^def_[a-z0-9]{16}$",
       "type": "string"
     },
+    "If-Match": {
+      "minLength": 1,
+      "maxLength": 1024,
+      "type": "string",
+      "description": "ETag from a preceding response. The write applies only if the resource still has that version; otherwise it returns 412 precondition_failed without changes. Omit to write the current version. See https://typeship.dev/docs/typeship-api#conditional-writes."
+    },
     "Idempotency-Key": {
       "minLength": 1,
       "maxLength": 255,
       "pattern": "^[!-~]+$",
       "type": "string",
-      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, If-Match header, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
     },
     "source": {
       "anyOf": [
@@ -6090,7 +6111,7 @@ Input schema:
       "maxLength": 255,
       "pattern": "^[!-~]+$",
       "type": "string",
-      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, If-Match header, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
     },
     "name": {
       "minLength": 1,
@@ -7258,7 +7279,9 @@ Delete an unused Target
 
 Safety: **destructive** · Authentication: **required**
 
-Deletes a Target with no Generation history, release history, or active Draft. Disable a Target instead if it has any of these.
+Deletes a Target with no Generation history, release history, or active Draft. A `409 resource_has_dependencies` means one of those resources still depends on it. Retrieve the Target, disable it instead, or resolve the dependency before retrying.
+
+See [conditional writes](https://typeship.dev/docs/typeship-api#conditional-writes) for ETag and If-Match.
 
 Input schema:
 
@@ -7273,6 +7296,12 @@ Input schema:
       ],
       "pattern": "^tgt_[a-z0-9]{16}$",
       "type": "string"
+    },
+    "If-Match": {
+      "minLength": 1,
+      "maxLength": 1024,
+      "type": "string",
+      "description": "ETag from a preceding response. The write applies only if the resource still has that version; otherwise it returns 412 precondition_failed without changes. Omit to write the current version. See https://typeship.dev/docs/typeship-api#conditional-writes."
     },
     "fields": {
       "type": "array",
@@ -7346,10 +7375,12 @@ Update a Target, its Deliveries, or its next reviewed version
 Safety: **write** · Authentication: **required**
 
 Omitted fields keep their current values. Supplied config, checks, and deliveries replace their complete stored values.
-Updates have no revision precondition. Concurrent updates preserve omitted fields, and the last saved update to a supplied field wins.
-Send proposed_version by itself; use the Draft endpoint for a version selection with an optional revision precondition.
+Omitting If-Match applies the update to the current resource; with If-Match, a stale ETag returns 412 precondition_failed without saving.
+Send proposed_version by itself; use the Draft endpoint to select a version directly.
 
+A `409 target_busy` means the Target is publishing; wait for it to finish. A `409 delivery_conflict` means another Target owns the requested repository tree; retrieve both Targets, choose a free destination, and retry.
 A `502` response means the update was saved, but retiring an obsolete review or regenerating a version selection failed. Retrieve the Target and follow the error's retryable and suggested_action fields. Repeating an unfinished version selection resumes generation; repeating a completed selection starts no new work.
+See [conditional writes](https://typeship.dev/docs/typeship-api#conditional-writes) for ETag and If-Match.
 
 Input schema:
 
@@ -7364,6 +7395,12 @@ Input schema:
       ],
       "pattern": "^tgt_[a-z0-9]{16}$",
       "type": "string"
+    },
+    "If-Match": {
+      "minLength": 1,
+      "maxLength": 1024,
+      "type": "string",
+      "description": "ETag from a preceding response. The write applies only if the resource still has that version; otherwise it returns 412 precondition_failed without changes. Omit to write the current version. See https://typeship.dev/docs/typeship-api#conditional-writes."
     },
     "name": {
       "minLength": 1,
@@ -7389,7 +7426,7 @@ Input schema:
       "type": "string"
     },
     "proposed_version": {
-      "description": "Send only this field to select an exact SemVer, or null for automatic selection. Use the Draft endpoint for an optional If-Match precondition.",
+      "description": "Send only this field to select an exact SemVer, or null for automatic selection. The Target and Draft endpoints both support an optional If-Match precondition.",
       "type": [
         "string",
         "null"
@@ -8981,6 +9018,8 @@ Checks your version choice against the required version bump, then regenerates t
 Send the Draft's `ETag` in `If-Match` to reject an intervening change with 412 precondition_failed before saving or regenerating. Omitting `If-Match` applies the selection to the current Draft. Version is required; null restores automatic selection.
 
 A `502` response means the selected version was saved, but regeneration failed. Follow the error's retryable and suggested_action fields. Repeating an unfinished selection resumes generation; repeating a completed selection starts no new work. If using If-Match, retrieve the Draft and confirm the saved selection before retrying with its current ETag.
+A `409 target_busy` means the Target is publishing; wait and retry. A `409 version_occupied` means the version is already released; retrieve the Draft and releases, choose a new version, and retry.
+See [conditional writes](https://typeship.dev/docs/typeship-api#conditional-writes) for ETag and If-Match.
 
 Input schema:
 
@@ -9000,7 +9039,7 @@ Input schema:
       "minLength": 1,
       "maxLength": 1024,
       "type": "string",
-      "description": "ETag from a preceding response. The update applies only if the resource still has that version; otherwise it returns 412 precondition_failed without changes. Omit to update the current version."
+      "description": "ETag from a preceding response. The write applies only if the resource still has that version; otherwise it returns 412 precondition_failed without changes. Omit to write the current version. See https://typeship.dev/docs/typeship-api#conditional-writes."
     },
     "version": {
       "description": "Exact SemVer, or null to return to automatic selection.",
@@ -9421,7 +9460,7 @@ Input schema:
       "maxLength": 255,
       "pattern": "^[!-~]+$",
       "type": "string",
-      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, If-Match header, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
     },
     "version": {
       "description": "Exact already-published package version to make Current.",
@@ -10222,7 +10261,7 @@ Input schema:
       "maxLength": 255,
       "pattern": "^[!-~]+$",
       "type": "string",
-      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
+      "description": "Identifies one logical write for 24 hours. The key is scoped to the authenticated account and operation; account-less generation uses a hashed network identity. Retrying the same method, path, query, If-Match header, and JSON body replays the original response. Reusing the key with changed intent returns 409. After expiry the key starts a new write."
     },
     "fields": {
       "type": "array",
@@ -13213,17 +13252,15 @@ Output schema:
 
 Results contain `items` and `hasMore`. When another page exists, `nextPage` contains the arguments to pass to the same operation to continue.
 
-### `api_keys_revoke`
+### `api_keys_retrieve`
 
-Revoke an API key
+Retrieve an API key
 
-`DELETE /api-keys/{api_key_id}`
+`GET /api-keys/{api_key_id}`
 
-Safety: **destructive** · Authentication: **required**
+Safety: **read** · Authentication: **required**
 
-Revokes a key. Repeating the request returns the same result.
-
-With OAuth, members can revoke their own keys; organization admins can revoke any key. Organization API keys can revoke any key in their account.
+Returns the key summary and its ETag for conditional revocation.
 
 Input schema:
 
@@ -13238,6 +13275,113 @@ Input schema:
         "example-name",
         "apikey_2nY8mR6pQ4vK9cH3"
       ]
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Result keys to keep, as dotted paths (e.g. [\"id\",\"name\"]). Omit for the whole result. Keeps responses small."
+    }
+  },
+  "required": [
+    "api_key_id"
+  ]
+}
+```
+
+Example `tools/call` parameters:
+
+```json
+{
+  "name": "execute",
+  "arguments": {
+    "operation": "api_keys_retrieve",
+    "arguments": {
+      "api_key_id": "apikey_2nY8mR6pQ4vK9cH3"
+    }
+  }
+}
+```
+
+Output schema:
+
+```json
+{
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "object": {
+      "const": "api_key",
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "last4": {
+      "description": "Last four characters of the secret; the secret itself is never stored.",
+      "type": "string"
+    },
+    "revoked": {
+      "type": "boolean"
+    },
+    "last_used_at": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "request_id": {
+      "description": "Server-generated identifier used to correlate this response with Typeship logs.",
+      "examples": [
+        "req_3k8m1v6q9p2d7h4c"
+      ],
+      "pattern": "^req_[a-z0-9]{16}$",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `api_keys_revoke`
+
+Revoke an API key
+
+`DELETE /api-keys/{api_key_id}`
+
+Safety: **destructive** · Authentication: **required**
+
+Revokes a key. Repeating the request returns the same result.
+
+With OAuth, members can revoke their own keys; organization admins can revoke any key. Organization API keys can revoke any key in their account.
+See [conditional writes](https://typeship.dev/docs/typeship-api#conditional-writes) for ETag and If-Match.
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "api_key_id": {
+      "description": "Identifier returned by the API key list. Accepts an ID or an exact name (resolved via api_keys_list). IDs come from api_keys_list.",
+      "type": "string",
+      "examples": [
+        "example-name",
+        "apikey_2nY8mR6pQ4vK9cH3"
+      ]
+    },
+    "If-Match": {
+      "minLength": 1,
+      "maxLength": 1024,
+      "type": "string",
+      "description": "ETag from a preceding response. The write applies only if the resource still has that version; otherwise it returns 412 precondition_failed without changes. Omit to write the current version. See https://typeship.dev/docs/typeship-api#conditional-writes."
     },
     "fields": {
       "type": "array",
