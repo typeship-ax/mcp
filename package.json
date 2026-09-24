@@ -1,6 +1,6 @@
 {
   "name": "@typeship-ax/mcp",
-  "version": "0.18.1",
+  "version": "0.19.0",
   "description": "MCP server for typeship.",
   "keywords": [
     "typeship",
@@ -46,7 +46,7 @@
     "prepublishOnly": "npm run build"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
