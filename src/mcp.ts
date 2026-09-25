@@ -22,6 +22,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TypeshipClient, formatDebugEvent, type ClientOptions, type DebugEvent } from "./index.js";
+import { asApiResult } from "./core/http.js";
 import { GLOBALS, OMITTED_OPS, OPS, buildArgs, type OpSpec } from "./ops.js";
 import {
   DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, McpAccountLinkRequired, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
@@ -42,7 +43,7 @@ export { McpAccountLinkRequired } from "./mcp-protocol.js";
 const BIN = "typeship";
 const PKG_NAME = "@typeship-ax/mcp";
 const SERVER_NAME = "typeship-mcp";
-const SERVER_VERSION = "0.19.0";
+const SERVER_VERSION = "0.20.0";
 /** The MCP client's announced name (clientInfo in request _meta), for the User-Agent. */
 let MCP_CLIENT_NAME: string | null = null;
 function noteClientInfo(message: unknown): void {
@@ -64,7 +65,7 @@ const TOOL_MODE: "operations" | "meta" = "meta";
 /** Project-supplied guidance appended to the server instructions. */
 const CUSTOM_INSTRUCTIONS: string | null = null;
 /** The tool that returns the caller (the CLI's whoami target), named in the instructions. */
-const IDENTITY_TOOL: string | null = "account_retrieve";
+const IDENTITY_TOOL: string | null = null;
 /** Surface switches: reads only, and/or a subset of resources or tools.
  * Flags win over the environment. */
 const ARGV = process.argv.slice(2);
@@ -207,14 +208,14 @@ async function callOperationRaw(op: OpSpec, rawArgs: Record<string, unknown>, re
   const shape = { fields, maxChars, pagination: op.pagination, args };
   try {
     const target = (client as unknown as Record<string, Record<string, (...a: unknown[]) => unknown>>)[op.resource]!;
-    let result = await (target[op.method]!(...callArgs) as Promise<{ ok: boolean; data?: unknown; error?: unknown; response?: { requestId?: string } }>);
+    let result = await asApiResult(target[op.method]!(...callArgs) as Promise<unknown>);
     if (!result.ok) return errorOutcome(result.error, errorContext);
-    if (op.httpMethod === "POST" && op.path === "/projects/{project_id}/generations") {
+    if (op.httpMethod === "POST" && op.path === "/projects/{project_id}/generate") {
       const batch = result.data as { data: Array<{ id: string }> };
-      const generations = (client as unknown as { generations: { wait(id: string): Promise<{ ok: boolean; data?: unknown; error?: unknown }> } }).generations;
+      const generations = (client as unknown as { generations: { wait(id: string): Promise<unknown> } }).generations;
       const completed: unknown[] = [];
       for (const generation of batch.data) {
-        const waited = await generations.wait(generation.id);
+        const waited = await asApiResult(generations.wait(generation.id));
         if (!waited.ok) return errorOutcome(waited.error, errorContext);
         completed.push(waited.data);
       }
