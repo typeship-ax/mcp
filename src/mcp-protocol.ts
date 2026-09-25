@@ -1618,8 +1618,8 @@ function omittedPlanLimit(ops: OpLike[], requested?: string): ToolOutcome {
     error: "PlanLimitError",
     code: "PLAN_LIMIT",
     message: requested
-      ? "The operation " + requested + " exists in the API Definition but was omitted from this generated package by its plan limit."
-      : "Matching operations exist in the API Definition but were omitted from this generated package by its plan limit.",
+      ? "The operation " + requested + " exists in the Spec but was omitted from this generated package by its plan limit."
+      : "Matching operations exist in the Spec but were omitted from this generated package by its plan limit.",
     omitted_operations: ops.map((op) => ({ tool: op.tool, method: op.httpMethod, path: op.path })),
     next_steps: ["Upgrade at https://typeship.dev/pricing and regenerate the package without the operation cap.", "Do not invent or retry an omitted operation against this generated package."],
   };
