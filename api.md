@@ -12637,9 +12637,9 @@ Output schema:
 }
 ```
 
-## generate
+## packages
 
-### `generate_run`
+### `packages_generate`
 
 Generate a package
 
@@ -13461,7 +13461,7 @@ Example `tools/call` parameters:
 {
   "name": "execute",
   "arguments": {
-    "operation": "generate_run",
+    "operation": "packages_generate",
     "arguments": {
       "spec": {
         "url": "https://typeship.dev/examples/petstore/openapi.yaml"
@@ -13630,7 +13630,7 @@ Output schema:
 }
 ```
 
-### `generate_download_package`
+### `packages_download`
 
 Download a generated package
 
@@ -13638,7 +13638,7 @@ Download a generated package
 
 Safety: **read** · Authentication: **none**
 
-Download the complete ZIP referenced by `generate_run`'s `download.url`. Pass the token from that URL. No API key is needed; the token grants access only to that exact package until its replay window expires. Keep the token private.
+Download the complete ZIP referenced by `packages_generate`'s `download.url`. Pass the token from that URL. No API key is needed; the token grants access only to that exact package until its replay window expires. Keep the token private.
 
 The local MCP server saves this binary response to disk. On a hosted MCP connection, download the original URL directly to your workspace. Verify the ZIP against `download.sha256` before extracting it into an empty directory. Expired or invalid tokens return `404`; a new generation creates a new download.
 
@@ -13676,7 +13676,7 @@ Example `tools/call` parameters:
 {
   "name": "execute",
   "arguments": {
-    "operation": "generate_download_package",
+    "operation": "packages_download",
     "arguments": {
       "token": "parcel_download_example_token_1234567890123"
     }
