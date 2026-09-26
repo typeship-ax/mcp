@@ -8143,13 +8143,13 @@ Input schema:
     },
     "status": {
       "enum": [
-        "none",
+        "idle",
         "working",
         "action_required",
         "ready",
         "merged"
       ],
-      "description": "none: the open Draft has no pending change; generate the Target to start one. working: Typeship is generating, carrying repository edits forward, applying decisions, or checking the Draft; retrieve it again. action_required: use the typed reason to find the customer's next action. ready: required checks passed on head_sha; merge the pull request. merged: the pull request merged and the Draft is final; retrieve the Target for the draft_id of its next Draft.",
+      "description": "idle: the open Draft has no pending change; generate the Target to start one. working: Typeship is generating, carrying repository edits forward, applying decisions, or checking the Draft; retrieve it again. action_required: use the typed reason to find the customer's next action. ready: required checks passed on head_sha; merge the pull request. merged: the pull request merged and the Draft is final; retrieve the Target for the draft_id of its next Draft.",
       "type": "string"
     },
     "fields": {
@@ -8216,13 +8216,13 @@ Output schema:
           },
           "status": {
             "enum": [
-              "none",
+              "idle",
               "working",
               "action_required",
               "ready",
               "merged"
             ],
-            "description": "none: the open Draft has no pending change; generate the Target to start one.",
+            "description": "idle: the open Draft has no pending change; generate the Target to start one.",
             "type": "string"
           },
           "reason": {
@@ -8257,84 +8257,36 @@ Output schema:
               "null"
             ]
           },
-          "readiness": {
+          "compatibility": {
+            "description": "Null until the Draft has a generated change, and on a merged Draft.",
             "anyOf": [
               {
-                "description": "Readiness decision for the Draft's head_sha.",
-                "properties": {
-                  "status": {
-                    "enum": [
-                      "success",
-                      "failure",
-                      "error",
-                      "pending"
-                    ],
-                    "description": "success means required checks passed; failure means the Draft needs correction or review; error mea…",
-                    "type": "string"
-                  },
-                  "description": {
-                    "description": "Human-readable explanation of the current decision.",
-                    "type": "string"
-                  },
-                  "compatibility_api": {
-                    "enum": [
-                      "compatible",
-                      "breaking",
-                      "unknown"
-                    ],
-                    "description": "API surface comparison against the latest release.",
-                    "type": "string"
-                  },
-                  "compatibility_package": {
-                    "enum": [
-                      "compatible",
-                      "breaking",
-                      "unknown"
-                    ],
-                    "description": "Package and supported SDK source comparison against the latest release.",
-                    "type": "string"
-                  },
-                  "version_correct": {
-                    "description": "Whether the version satisfies the assessed change.",
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
-                  },
-                  "bump_required": {
-                    "enum": [
-                      "major",
-                      "minor",
-                      "patch",
-                      null
-                    ],
-                    "description": "Minimum assessed version bump.",
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "version_previous": {
-                    "description": "Latest release version used for the comparison.",
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "title_error": {
-                    "description": "Draft title error that must be corrected before release.",
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                },
+                "description": "Comparison of the Draft's head_sha with the latest release.",
                 "type": "object"
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "version": {
+            "description": "Null until the Draft has a generated change, and on a merged Draft.",
+            "anyOf": [
+              {
+                "description": "How version_next relates to the assessed change.",
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errors": {
+            "description": "What blocks the Draft, one entry per finding, each with a code and suggested_action.",
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
           },
           "changes": {
             "properties": {
@@ -8351,12 +8303,6 @@ Output schema:
                   "integer",
                   "null"
                 ]
-              },
-              "version_previous": {
-                "type": [
-                  "string",
-                  "null"
-                ]
               }
             },
             "type": [
@@ -8365,7 +8311,7 @@ Output schema:
             ]
           },
           "head_sha": {
-            "description": "Draft commit that readiness, checks, and conflicts describe.",
+            "description": "Draft commit that compatibility, version, checks, and conflicts describe.",
             "type": [
               "string",
               "null"
@@ -8375,16 +8321,6 @@ Output schema:
             "description": "The Draft pull request in the destination repository, or null before one is opened.",
             "anyOf": [
               {
-                "properties": {
-                  "url": {
-                    "format": "uri",
-                    "type": "string"
-                  },
-                  "number": {
-                    "minimum": 1,
-                    "type": "integer"
-                  }
-                },
                 "type": "object"
               },
               {
@@ -8436,18 +8372,6 @@ Output schema:
             "description": "Conflict counts for the current merge stage; null when the Draft has no conflicts.",
             "anyOf": [
               {
-                "properties": {
-                  "total": {
-                    "description": "Conflicts in the current merge stage.",
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "decided": {
-                    "description": "Conflicts with a saved decision for head_sha.",
-                    "minimum": 0,
-                    "type": "integer"
-                  }
-                },
                 "type": "object"
               },
               {
@@ -8468,26 +8392,6 @@ Output schema:
             "anyOf": [
               {
                 "description": "The approval inputs for a default-branch history rewrite.",
-                "properties": {
-                  "default_sha": {
-                    "description": "Rewritten default-branch commit.",
-                    "type": "string"
-                  },
-                  "head_sha": {
-                    "description": "Draft commit Typeship last observed.",
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "preserved_branch": {
-                    "description": "Existing Draft branch that stays available after recovery opens a new Draft.",
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                },
                 "type": "object"
               },
               {
@@ -8505,49 +8409,6 @@ Output schema:
           },
           "checks": {
             "items": {
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "source": {
-                  "enum": [
-                    "typeship",
-                    "customer",
-                    "repository",
-                    "compatibility"
-                  ],
-                  "type": "string"
-                },
-                "status": {
-                  "enum": [
-                    "pending",
-                    "passed",
-                    "failed",
-                    "not_assessed"
-                  ],
-                  "type": "string"
-                },
-                "reason": {
-                  "type": "string"
-                },
-                "commit_sha": {
-                  "type": "string"
-                },
-                "url": {
-                  "format": "uri",
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "observed_at": {
-                  "format": "date-time",
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
               "type": "object"
             },
             "type": "array"
@@ -8584,7 +8445,7 @@ Get a Draft
 
 Safety: **read** · Authentication: **required**
 
-Returns the Draft's status. An open Draft also reports its typed reason when action is required, next version and its source, readiness, checks, and conflict counts. The response carries an `ETag`; send it in `If-Match` when updating the Draft to avoid changing a newer version selection.
+Returns the Draft's status. An open Draft also reports its typed reason when action is required, next version and its source, compatibility and version assessment, blocking errors, checks, and conflict counts. The response carries an `ETag`; send it in `If-Match` when updating the Draft to avoid changing a newer version selection.
 
 Input schema:
 
@@ -8663,13 +8524,13 @@ Output schema:
     },
     "status": {
       "enum": [
-        "none",
+        "idle",
         "working",
         "action_required",
         "ready",
         "merged"
       ],
-      "description": "none: the open Draft has no pending change; generate the Target to start one.",
+      "description": "idle: the open Draft has no pending change; generate the Target to start one.",
       "type": "string"
     },
     "reason": {
@@ -8704,84 +8565,36 @@ Output schema:
         "null"
       ]
     },
-    "readiness": {
+    "compatibility": {
+      "description": "Null until the Draft has a generated change, and on a merged Draft.",
       "anyOf": [
         {
-          "description": "Readiness decision for the Draft's head_sha.",
-          "properties": {
-            "status": {
-              "enum": [
-                "success",
-                "failure",
-                "error",
-                "pending"
-              ],
-              "description": "success means required checks passed; failure means the Draft needs correction or review; error mea…",
-              "type": "string"
-            },
-            "description": {
-              "description": "Human-readable explanation of the current decision.",
-              "type": "string"
-            },
-            "compatibility_api": {
-              "enum": [
-                "compatible",
-                "breaking",
-                "unknown"
-              ],
-              "description": "API surface comparison against the latest release.",
-              "type": "string"
-            },
-            "compatibility_package": {
-              "enum": [
-                "compatible",
-                "breaking",
-                "unknown"
-              ],
-              "description": "Package and supported SDK source comparison against the latest release.",
-              "type": "string"
-            },
-            "version_correct": {
-              "description": "Whether the version satisfies the assessed change.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "bump_required": {
-              "enum": [
-                "major",
-                "minor",
-                "patch",
-                null
-              ],
-              "description": "Minimum assessed version bump.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "version_previous": {
-              "description": "Latest release version used for the comparison.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "title_error": {
-              "description": "Draft title error that must be corrected before release.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
+          "description": "Comparison of the Draft's head_sha with the latest release.",
           "type": "object"
         },
         {
           "type": "null"
         }
       ]
+    },
+    "version": {
+      "description": "Null until the Draft has a generated change, and on a merged Draft.",
+      "anyOf": [
+        {
+          "description": "How version_next relates to the assessed change.",
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "errors": {
+      "description": "What blocks the Draft, one entry per finding, each with a code and suggested_action.",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     },
     "changes": {
       "properties": {
@@ -8798,12 +8611,6 @@ Output schema:
             "integer",
             "null"
           ]
-        },
-        "version_previous": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "type": [
@@ -8812,7 +8619,7 @@ Output schema:
       ]
     },
     "head_sha": {
-      "description": "Draft commit that readiness, checks, and conflicts describe.",
+      "description": "Draft commit that compatibility, version, checks, and conflicts describe.",
       "type": [
         "string",
         "null"
@@ -8822,16 +8629,6 @@ Output schema:
       "description": "The Draft pull request in the destination repository, or null before one is opened.",
       "anyOf": [
         {
-          "properties": {
-            "url": {
-              "format": "uri",
-              "type": "string"
-            },
-            "number": {
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
           "type": "object"
         },
         {
@@ -8883,18 +8680,6 @@ Output schema:
       "description": "Conflict counts for the current merge stage; null when the Draft has no conflicts.",
       "anyOf": [
         {
-          "properties": {
-            "total": {
-              "description": "Conflicts in the current merge stage.",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "decided": {
-              "description": "Conflicts with a saved decision for head_sha.",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
           "type": "object"
         },
         {
@@ -8915,26 +8700,6 @@ Output schema:
       "anyOf": [
         {
           "description": "The approval inputs for a default-branch history rewrite.",
-          "properties": {
-            "default_sha": {
-              "description": "Rewritten default-branch commit.",
-              "type": "string"
-            },
-            "head_sha": {
-              "description": "Draft commit Typeship last observed.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "preserved_branch": {
-              "description": "Existing Draft branch that stays available after recovery opens a new Draft.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
           "type": "object"
         },
         {
@@ -8952,49 +8717,6 @@ Output schema:
     },
     "checks": {
       "items": {
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "source": {
-            "enum": [
-              "typeship",
-              "customer",
-              "repository",
-              "compatibility"
-            ],
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "pending",
-              "passed",
-              "failed",
-              "not_assessed"
-            ],
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "commit_sha": {
-            "type": "string"
-          },
-          "url": {
-            "format": "uri",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "observed_at": {
-            "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
         "type": "object"
       },
       "type": "array"
@@ -9113,13 +8835,13 @@ Output schema:
     },
     "status": {
       "enum": [
-        "none",
+        "idle",
         "working",
         "action_required",
         "ready",
         "merged"
       ],
-      "description": "none: the open Draft has no pending change; generate the Target to start one.",
+      "description": "idle: the open Draft has no pending change; generate the Target to start one.",
       "type": "string"
     },
     "reason": {
@@ -9154,84 +8876,36 @@ Output schema:
         "null"
       ]
     },
-    "readiness": {
+    "compatibility": {
+      "description": "Null until the Draft has a generated change, and on a merged Draft.",
       "anyOf": [
         {
-          "description": "Readiness decision for the Draft's head_sha.",
-          "properties": {
-            "status": {
-              "enum": [
-                "success",
-                "failure",
-                "error",
-                "pending"
-              ],
-              "description": "success means required checks passed; failure means the Draft needs correction or review; error mea…",
-              "type": "string"
-            },
-            "description": {
-              "description": "Human-readable explanation of the current decision.",
-              "type": "string"
-            },
-            "compatibility_api": {
-              "enum": [
-                "compatible",
-                "breaking",
-                "unknown"
-              ],
-              "description": "API surface comparison against the latest release.",
-              "type": "string"
-            },
-            "compatibility_package": {
-              "enum": [
-                "compatible",
-                "breaking",
-                "unknown"
-              ],
-              "description": "Package and supported SDK source comparison against the latest release.",
-              "type": "string"
-            },
-            "version_correct": {
-              "description": "Whether the version satisfies the assessed change.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "bump_required": {
-              "enum": [
-                "major",
-                "minor",
-                "patch",
-                null
-              ],
-              "description": "Minimum assessed version bump.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "version_previous": {
-              "description": "Latest release version used for the comparison.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "title_error": {
-              "description": "Draft title error that must be corrected before release.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
+          "description": "Comparison of the Draft's head_sha with the latest release.",
           "type": "object"
         },
         {
           "type": "null"
         }
       ]
+    },
+    "version": {
+      "description": "Null until the Draft has a generated change, and on a merged Draft.",
+      "anyOf": [
+        {
+          "description": "How version_next relates to the assessed change.",
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "errors": {
+      "description": "What blocks the Draft, one entry per finding, each with a code and suggested_action.",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     },
     "changes": {
       "properties": {
@@ -9248,12 +8922,6 @@ Output schema:
             "integer",
             "null"
           ]
-        },
-        "version_previous": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "type": [
@@ -9262,7 +8930,7 @@ Output schema:
       ]
     },
     "head_sha": {
-      "description": "Draft commit that readiness, checks, and conflicts describe.",
+      "description": "Draft commit that compatibility, version, checks, and conflicts describe.",
       "type": [
         "string",
         "null"
@@ -9272,16 +8940,6 @@ Output schema:
       "description": "The Draft pull request in the destination repository, or null before one is opened.",
       "anyOf": [
         {
-          "properties": {
-            "url": {
-              "format": "uri",
-              "type": "string"
-            },
-            "number": {
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
           "type": "object"
         },
         {
@@ -9333,18 +8991,6 @@ Output schema:
       "description": "Conflict counts for the current merge stage; null when the Draft has no conflicts.",
       "anyOf": [
         {
-          "properties": {
-            "total": {
-              "description": "Conflicts in the current merge stage.",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "decided": {
-              "description": "Conflicts with a saved decision for head_sha.",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
           "type": "object"
         },
         {
@@ -9365,26 +9011,6 @@ Output schema:
       "anyOf": [
         {
           "description": "The approval inputs for a default-branch history rewrite.",
-          "properties": {
-            "default_sha": {
-              "description": "Rewritten default-branch commit.",
-              "type": "string"
-            },
-            "head_sha": {
-              "description": "Draft commit Typeship last observed.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "preserved_branch": {
-              "description": "Existing Draft branch that stays available after recovery opens a new Draft.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
           "type": "object"
         },
         {
@@ -9402,49 +9028,6 @@ Output schema:
     },
     "checks": {
       "items": {
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "source": {
-            "enum": [
-              "typeship",
-              "customer",
-              "repository",
-              "compatibility"
-            ],
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "pending",
-              "passed",
-              "failed",
-              "not_assessed"
-            ],
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "commit_sha": {
-            "type": "string"
-          },
-          "url": {
-            "format": "uri",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "observed_at": {
-            "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
         "type": "object"
       },
       "type": "array"
@@ -9962,13 +9545,13 @@ Output schema:
     },
     "status": {
       "enum": [
-        "none",
+        "idle",
         "working",
         "action_required",
         "ready",
         "merged"
       ],
-      "description": "none: the open Draft has no pending change; generate the Target to start one.",
+      "description": "idle: the open Draft has no pending change; generate the Target to start one.",
       "type": "string"
     },
     "reason": {
@@ -10003,84 +9586,36 @@ Output schema:
         "null"
       ]
     },
-    "readiness": {
+    "compatibility": {
+      "description": "Null until the Draft has a generated change, and on a merged Draft.",
       "anyOf": [
         {
-          "description": "Readiness decision for the Draft's head_sha.",
-          "properties": {
-            "status": {
-              "enum": [
-                "success",
-                "failure",
-                "error",
-                "pending"
-              ],
-              "description": "success means required checks passed; failure means the Draft needs correction or review; error mea…",
-              "type": "string"
-            },
-            "description": {
-              "description": "Human-readable explanation of the current decision.",
-              "type": "string"
-            },
-            "compatibility_api": {
-              "enum": [
-                "compatible",
-                "breaking",
-                "unknown"
-              ],
-              "description": "API surface comparison against the latest release.",
-              "type": "string"
-            },
-            "compatibility_package": {
-              "enum": [
-                "compatible",
-                "breaking",
-                "unknown"
-              ],
-              "description": "Package and supported SDK source comparison against the latest release.",
-              "type": "string"
-            },
-            "version_correct": {
-              "description": "Whether the version satisfies the assessed change.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "bump_required": {
-              "enum": [
-                "major",
-                "minor",
-                "patch",
-                null
-              ],
-              "description": "Minimum assessed version bump.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "version_previous": {
-              "description": "Latest release version used for the comparison.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "title_error": {
-              "description": "Draft title error that must be corrected before release.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
+          "description": "Comparison of the Draft's head_sha with the latest release.",
           "type": "object"
         },
         {
           "type": "null"
         }
       ]
+    },
+    "version": {
+      "description": "Null until the Draft has a generated change, and on a merged Draft.",
+      "anyOf": [
+        {
+          "description": "How version_next relates to the assessed change.",
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "errors": {
+      "description": "What blocks the Draft, one entry per finding, each with a code and suggested_action.",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     },
     "changes": {
       "properties": {
@@ -10097,12 +9632,6 @@ Output schema:
             "integer",
             "null"
           ]
-        },
-        "version_previous": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "type": [
@@ -10111,7 +9640,7 @@ Output schema:
       ]
     },
     "head_sha": {
-      "description": "Draft commit that readiness, checks, and conflicts describe.",
+      "description": "Draft commit that compatibility, version, checks, and conflicts describe.",
       "type": [
         "string",
         "null"
@@ -10121,16 +9650,6 @@ Output schema:
       "description": "The Draft pull request in the destination repository, or null before one is opened.",
       "anyOf": [
         {
-          "properties": {
-            "url": {
-              "format": "uri",
-              "type": "string"
-            },
-            "number": {
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
           "type": "object"
         },
         {
@@ -10182,18 +9701,6 @@ Output schema:
       "description": "Conflict counts for the current merge stage; null when the Draft has no conflicts.",
       "anyOf": [
         {
-          "properties": {
-            "total": {
-              "description": "Conflicts in the current merge stage.",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "decided": {
-              "description": "Conflicts with a saved decision for head_sha.",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
           "type": "object"
         },
         {
@@ -10214,26 +9721,6 @@ Output schema:
       "anyOf": [
         {
           "description": "The approval inputs for a default-branch history rewrite.",
-          "properties": {
-            "default_sha": {
-              "description": "Rewritten default-branch commit.",
-              "type": "string"
-            },
-            "head_sha": {
-              "description": "Draft commit Typeship last observed.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "preserved_branch": {
-              "description": "Existing Draft branch that stays available after recovery opens a new Draft.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
           "type": "object"
         },
         {
@@ -10251,49 +9738,6 @@ Output schema:
     },
     "checks": {
       "items": {
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "source": {
-            "enum": [
-              "typeship",
-              "customer",
-              "repository",
-              "compatibility"
-            ],
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "pending",
-              "passed",
-              "failed",
-              "not_assessed"
-            ],
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "commit_sha": {
-            "type": "string"
-          },
-          "url": {
-            "format": "uri",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "observed_at": {
-            "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
         "type": "object"
       },
       "type": "array"
@@ -10409,13 +9853,13 @@ Output schema:
     },
     "status": {
       "enum": [
-        "none",
+        "idle",
         "working",
         "action_required",
         "ready",
         "merged"
       ],
-      "description": "none: the open Draft has no pending change; generate the Target to start one.",
+      "description": "idle: the open Draft has no pending change; generate the Target to start one.",
       "type": "string"
     },
     "reason": {
@@ -10450,84 +9894,36 @@ Output schema:
         "null"
       ]
     },
-    "readiness": {
+    "compatibility": {
+      "description": "Null until the Draft has a generated change, and on a merged Draft.",
       "anyOf": [
         {
-          "description": "Readiness decision for the Draft's head_sha.",
-          "properties": {
-            "status": {
-              "enum": [
-                "success",
-                "failure",
-                "error",
-                "pending"
-              ],
-              "description": "success means required checks passed; failure means the Draft needs correction or review; error mea…",
-              "type": "string"
-            },
-            "description": {
-              "description": "Human-readable explanation of the current decision.",
-              "type": "string"
-            },
-            "compatibility_api": {
-              "enum": [
-                "compatible",
-                "breaking",
-                "unknown"
-              ],
-              "description": "API surface comparison against the latest release.",
-              "type": "string"
-            },
-            "compatibility_package": {
-              "enum": [
-                "compatible",
-                "breaking",
-                "unknown"
-              ],
-              "description": "Package and supported SDK source comparison against the latest release.",
-              "type": "string"
-            },
-            "version_correct": {
-              "description": "Whether the version satisfies the assessed change.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "bump_required": {
-              "enum": [
-                "major",
-                "minor",
-                "patch",
-                null
-              ],
-              "description": "Minimum assessed version bump.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "version_previous": {
-              "description": "Latest release version used for the comparison.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "title_error": {
-              "description": "Draft title error that must be corrected before release.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
+          "description": "Comparison of the Draft's head_sha with the latest release.",
           "type": "object"
         },
         {
           "type": "null"
         }
       ]
+    },
+    "version": {
+      "description": "Null until the Draft has a generated change, and on a merged Draft.",
+      "anyOf": [
+        {
+          "description": "How version_next relates to the assessed change.",
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "errors": {
+      "description": "What blocks the Draft, one entry per finding, each with a code and suggested_action.",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     },
     "changes": {
       "properties": {
@@ -10544,12 +9940,6 @@ Output schema:
             "integer",
             "null"
           ]
-        },
-        "version_previous": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "type": [
@@ -10558,7 +9948,7 @@ Output schema:
       ]
     },
     "head_sha": {
-      "description": "Draft commit that readiness, checks, and conflicts describe.",
+      "description": "Draft commit that compatibility, version, checks, and conflicts describe.",
       "type": [
         "string",
         "null"
@@ -10568,16 +9958,6 @@ Output schema:
       "description": "The Draft pull request in the destination repository, or null before one is opened.",
       "anyOf": [
         {
-          "properties": {
-            "url": {
-              "format": "uri",
-              "type": "string"
-            },
-            "number": {
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
           "type": "object"
         },
         {
@@ -10629,18 +10009,6 @@ Output schema:
       "description": "Conflict counts for the current merge stage; null when the Draft has no conflicts.",
       "anyOf": [
         {
-          "properties": {
-            "total": {
-              "description": "Conflicts in the current merge stage.",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "decided": {
-              "description": "Conflicts with a saved decision for head_sha.",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
           "type": "object"
         },
         {
@@ -10661,26 +10029,6 @@ Output schema:
       "anyOf": [
         {
           "description": "The approval inputs for a default-branch history rewrite.",
-          "properties": {
-            "default_sha": {
-              "description": "Rewritten default-branch commit.",
-              "type": "string"
-            },
-            "head_sha": {
-              "description": "Draft commit Typeship last observed.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "preserved_branch": {
-              "description": "Existing Draft branch that stays available after recovery opens a new Draft.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
           "type": "object"
         },
         {
@@ -10698,49 +10046,6 @@ Output schema:
     },
     "checks": {
       "items": {
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "source": {
-            "enum": [
-              "typeship",
-              "customer",
-              "repository",
-              "compatibility"
-            ],
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "pending",
-              "passed",
-              "failed",
-              "not_assessed"
-            ],
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "commit_sha": {
-            "type": "string"
-          },
-          "url": {
-            "format": "uri",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "observed_at": {
-            "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
         "type": "object"
       },
       "type": "array"
@@ -13439,6 +12744,8 @@ Output schema:
                     "delivery_exists",
                     "resource_has_dependencies",
                     "customization_conflict",
+                    "checks_failed",
+                    "draft_title_invalid",
                     "history_recovery_required",
                     "checks_unavailable",
                     "dependency_missing",
@@ -13745,6 +13052,8 @@ Output schema:
               "delivery_exists",
               "resource_has_dependencies",
               "customization_conflict",
+              "checks_failed",
+              "draft_title_invalid",
               "history_recovery_required",
               "checks_unavailable",
               "dependency_missing",
@@ -14177,6 +13486,8 @@ Output schema:
                     "delivery_exists",
                     "resource_has_dependencies",
                     "customization_conflict",
+                    "checks_failed",
+                    "draft_title_invalid",
                     "history_recovery_required",
                     "checks_unavailable",
                     "dependency_missing",
@@ -14576,6 +13887,8 @@ Output schema:
               "delivery_exists",
               "resource_has_dependencies",
               "customization_conflict",
+              "checks_failed",
+              "draft_title_invalid",
               "history_recovery_required",
               "checks_unavailable",
               "dependency_missing",
