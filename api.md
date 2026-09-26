@@ -3815,11 +3815,11 @@ Output schema:
                   "type": "string"
                 },
                 "blocking": {
-                  "description": "Whether this Diagnostic fails the Spec's Diagnostic policy. Suppressed occurrences and, when only_new is set, occurrences present in the baseline never block.",
+                  "description": "Whether any location fails the Spec's Diagnostic policy. Each location's blocking field names which ones. Suppressed locations and, when only_new is set, locations present in the baseline never block.",
                   "type": "boolean"
                 },
                 "introduced": {
-                  "description": "Whether any occurrence is new since baseline_spec_revision_id in the Diagnostic summary. Always true when there is no baseline.",
+                  "description": "Whether any location is new since baseline_spec_revision_id in the Diagnostic summary. Each location's introduced field names which ones. Always true when there is no baseline.",
                   "type": "boolean"
                 },
                 "severity": {
@@ -3859,7 +3859,7 @@ Output schema:
                   "type": "boolean"
                 },
                 "locations": {
-                  "description": "All affected coordinates, kept under one grouped diagnostic.",
+                  "description": "The affected coordinates, kept under one grouped Diagnostic. With a filter, only the matching locations.",
                   "minItems": 1,
                   "type": "array"
                 },
@@ -3944,7 +3944,7 @@ Get a Spec Revision
 
 Safety: **read** · Authentication: **required**
 
-Returns metadata for a saved Spec Revision with a Diagnostics summary. Pass `include=diagnostics` to add every Diagnostic, evaluated with the Spec's current patches and Diagnostic policy. List its source files and resolved document with listSpecRevisionFiles.
+Returns metadata for a saved Spec Revision with a Diagnostics summary. Pass `include=diagnostics` to add every Diagnostic, evaluated with the Spec's current patches and Diagnostic policy. Add `filter=blocking` to receive only the locations that fail the policy, which is what to fix when `diagnostic_summary.status` is blocked. List its source files and resolved document with listSpecRevisionFiles.
 
 Input schema:
 
@@ -3966,6 +3966,14 @@ Input schema:
       ],
       "type": "string",
       "description": "Add related data to the response. `diagnostics` adds the `diagnostics` and `patch_diagnostics` arrays."
+    },
+    "filter": {
+      "enum": [
+        "blocking",
+        "introduced"
+      ],
+      "type": "string",
+      "description": "Narrow the included Diagnostics to matching locations. Requires include=diagnostics. blocking: locations that fail the Diagnostic policy. introduced: locations new since the baseline. A Diagnostic with no matching location is omitted. diagnostic_summary always describes the complete revision."
     },
     "fields": {
       "type": "array",
@@ -4089,14 +4097,14 @@ Output schema:
       ]
     },
     "diagnostic_summary": {
-      "description": "Counts of grouped Diagnostics, one per rule. Retrieve the revision with include=diagnostics for each Diagnostic.",
+      "description": "Counts of grouped Diagnostics, one per rule.",
       "properties": {
         "status": {
           "enum": [
             "passed",
             "blocked"
           ],
-          "description": "passed: no Diagnostic fails the Spec's Diagnostic policy. blocked: at least one does; retrieve with include=diagnostics and fix those marked blocking.",
+          "description": "passed: no Diagnostic fails the Spec's Diagnostic policy.",
           "type": "string"
         },
         "error_count": {
@@ -4120,7 +4128,7 @@ Output schema:
           "type": "integer"
         },
         "baseline_spec_revision_id": {
-          "description": "The previous revision of this Spec that introduced Diagnostics are compared with, or null for the first revision.",
+          "description": "The previous revision of this Spec that introduced Diagnostics are compared with, or null for the f…",
           "anyOf": [
             {
               "description": "Unique identifier for an immutable resolved Spec Revision.",
@@ -4139,12 +4147,12 @@ Output schema:
       "type": "object"
     },
     "diagnostics": {
-      "description": "Present only with include=diagnostics. Ordered by severity, then rule identifier.",
+      "description": "Present only with include=diagnostics.",
       "items": {
-        "description": "Every occurrence of one Diagnostic rule in a Spec Revision, grouped into one decision. Diagnostics are evaluated when read, using the Spec's current patches and Diagnostic policy.",
+        "description": "Every occurrence of one Diagnostic rule in a Spec Revision, grouped into one decision.",
         "properties": {
           "id": {
-            "description": "Stable rule identifier, unique within a Spec Revision. Suppressions name it as rule_id.",
+            "description": "Stable rule identifier, unique within a Spec Revision.",
             "type": "string"
           },
           "object": {
@@ -4152,11 +4160,11 @@ Output schema:
             "type": "string"
           },
           "blocking": {
-            "description": "Whether this Diagnostic fails the Spec's Diagnostic policy. Suppressed occurrences and, when only_new is set, occurrences present in the baseline never block.",
+            "description": "Whether any location fails the Spec's Diagnostic policy.",
             "type": "boolean"
           },
           "introduced": {
-            "description": "Whether any occurrence is new since baseline_spec_revision_id in the Diagnostic summary. Always true when there is no baseline.",
+            "description": "Whether any location is new since baseline_spec_revision_id in the Diagnostic summary.",
             "type": "boolean"
           },
           "severity": {
@@ -4205,10 +4213,10 @@ Output schema:
             "type": "boolean"
           },
           "locations": {
-            "description": "All affected coordinates, kept under one grouped diagnostic.",
+            "description": "The affected coordinates, kept under one grouped Diagnostic.",
             "minItems": 1,
             "items": {
-              "description": "One exact place where a Diagnostic rule found evidence.",
+              "description": "One exact place where a Diagnostic rule found evidence, with its own state under the Spec's Diagnos…",
               "type": "object"
             },
             "type": "array"
@@ -4225,7 +4233,7 @@ Output schema:
                   "spec_patch",
                   "source_edit"
                 ],
-                "description": "spec_patch is an exact OpenAPI edit Typeship can derive; source_edit requires author intent or a lossless GraphQL source edit.",
+                "description": "spec_patch is an exact OpenAPI edit Typeship can derive; source_edit requires author intent or a lo…",
                 "type": "string"
               },
               "patches": {
@@ -4240,7 +4248,7 @@ Output schema:
             "type": "object"
           },
           "authoring_brief": {
-            "description": "Grounded instructions an agent can use to edit the source. The brief preserves existing behavior and requires owner input when the contract cannot prove the missing product decision.",
+            "description": "Grounded instructions an agent can use to edit the source.",
             "type": "string"
           }
         },
@@ -4249,7 +4257,7 @@ Output schema:
       "type": "array"
     },
     "patch_diagnostics": {
-      "description": "Present only with include=diagnostics. Coded misses or conflicts from applying the Spec's patches to this revision.",
+      "description": "Present only with include=diagnostics.",
       "items": {
         "properties": {
           "code": {
