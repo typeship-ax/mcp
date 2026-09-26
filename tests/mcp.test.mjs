@@ -41,12 +41,12 @@ function talk(env, requests) {
 }
 
 test("server/discover, tools/list, tools/call over stdio", async () => {
-  const mock = await startMock({ status: 200, contentType: "application/json", body: "{\"files\":[{\"path\":\"example\",\"content\":\"example\",\"mode\":\"100644\"}],\"download\":{\"url\":\"https://example.com\",\"expires_at\":\"2024-01-01T00:00:00Z\",\"sha256\":\"example\",\"size_bytes\":1,\"file_count\":1},\"warnings\":[{\"code\":\"example\",\"message\":\"example\",\"operation\":\"example\"}],\"coverage\":{\"generated\":1,\"omitted\":1,\"total\":1,\"omitted_operations\":[\"example\"],\"reason\":\"anonymous\",\"signup_url\":\"https://example.com\",\"upgrade_url\":\"https://example.com\"},\"claim\":null,\"request_id\":\"req_3k8m1v6q9p2d7h4c\"}" });
+  const mock = await startMock({ status: 201, contentType: "application/json", body: "{\"id\":\"prj_4f8k2m7x9q1v6b3n\",\"object\":\"project\",\"name\":\"example\",\"spec_id\":\"spec_2p8m4q7k1v9d6h3c\",\"auto_generate\":true,\"config\":{\"globals\":[\"example\"],\"retries\":{\"max_retries\":1,\"statuses\":[1],\"initial_delay_ms\":1,\"max_delay_ms\":1,\"retry_non_idempotent\":true,\"disabled\":true,\"operations\":{}},\"pagination\":{},\"auth\":{\"oauth_server\":{\"issuer\":\"https://example.com\",\"discovery_url\":\"https://example.com\",\"authorization_url\":\"https://example.com\",\"token_url\":\"https://example.com\",\"device_authorization_url\":\"https://example.com\",\"scopes\":[\"S123\"],\"audience\":\"example\",\"resource\":\"https://example.com\"},\"oauth_applications\":{},\"oauth_application\":\"example\",\"identity_verification\":{\"subject_field\":\"/id\",\"account_field\":\"/account_id\",\"organization_field\":\"/organization_id\"},\"approval_url\":\"https://example.com\",\"environments\":{}},\"cli\":{\"command_name\":\"example\",\"update_notice\":true,\"changelog_url\":\"example\",\"support_url\":\"example\",\"mcp_url\":\"example\",\"skills_repo\":\"example\"},\"mcp\":{\"registry_name\":\"example\",\"access\":{\"issuer\":\"https://example.com\",\"resource\":\"https://example.com\",\"jwks_url\":\"https://example.com\",\"scopes\":[\"example\"]},\"tool_mode\":\"auto\",\"instructions\":\"example\",\"tool_descriptions\":{},\"reference_resolvers\":{}},\"readme\":{\"quickstart_operation\":\"example\"},\"package\":{\"homepage\":\"example\",\"license\":\"example\",\"license_text\":\"example\",\"copyright\":\"example\",\"go_package_name\":\"example\"},\"docs_url\":\"https://example.com\",\"docs_index_url\":\"https://example.com\"},\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\",\"request_id\":\"req_3k8m1v6q9p2d7h4c\"}" });
   try {
     const responses = await talk({ "TYPESHIP_BASE_URL": mock.url, "TYPESHIP_CREDENTIALS": "{\"apiKey\":\"test-token\"}" }, [
       { jsonrpc: "2.0", id: 1, method: "server/discover", params: { _meta: META } },
       { jsonrpc: "2.0", id: 2, method: "tools/list", params: { _meta: META } },
-      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "execute", arguments: {"operation":"generate_run","arguments":{"spec":{},"target":{}}}, _meta: META } },
+      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "execute", arguments: {"operation":"projects_create","arguments":{"name":"example","spec":{},"targets":[{}]}}, _meta: META } },
     ]);
     const discover = responses.get(1);
     assert.equal(discover.result.supportedVersions[0], "2026-07-28", JSON.stringify(discover));
@@ -57,7 +57,7 @@ test("server/discover, tools/list, tools/call over stdio", async () => {
     assert.equal(call.result.resultType, "complete");
     const request = mock.requests[0];
     assert.equal(request.method, "POST");
-    assert.equal(request.path.split("?")[0], "/generate");
+    assert.equal(request.path.split("?")[0], "/projects");
     assert.equal(request.headers["authorization"], "Bearer test-token");
   } finally {
     mock.close();
@@ -68,7 +68,7 @@ test("tool errors prefer the JSON request_id over a stale header", async () => {
   const mock = await startMock({ status: 500, contentType: "application/json", body: JSON.stringify({ code: "internal_error", message: "expected failure", request_id: "req_mcp_body_test" }), headers: { "Request-Id": "req_mcp_stale" } });
   try {
     const responses = await talk({ "TYPESHIP_BASE_URL": mock.url, "TYPESHIP_CREDENTIALS": "{\"apiKey\":\"test-token\"}" }, [
-      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "execute", arguments: {"operation":"generate_run","arguments":{"spec":{},"target":{}}}, _meta: META } },
+      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "execute", arguments: {"operation":"projects_create","arguments":{"name":"example","spec":{},"targets":[{}]}}, _meta: META } },
     ]);
     const call = responses.get(4);
     assert.equal(call.result.isError, true, JSON.stringify(call).slice(0, 300));
