@@ -14,7 +14,7 @@ For complete input and output schemas, use [`api.json`](./api.json), the machine
 
 ### `generate_run`
 
-Generate a package from a Spec
+Generate a package
 
 `POST /generate`
 
@@ -1061,7 +1061,7 @@ Example `tools/call` parameters:
 
 ### `projects_list`
 
-List projects
+List Projects
 
 `GET /projects`
 
@@ -1119,7 +1119,7 @@ Output schema:
     "items": {
       "type": "array",
       "items": {
-        "description": "Lean Project identity returned by collection endpoints. Retrieve the Project for shared configuration and list its Targets for the complete canonical child collection.",
+        "description": "Project-owned identity, Spec reference, generation controls, and shared configuration. Targets and Deliveries are available only through their canonical Target endpoints.",
         "properties": {
           "id": {
             "description": "Unique identifier for a project.",
@@ -1146,7 +1146,71 @@ Output schema:
             "type": "string"
           },
           "auto_generate": {
+            "description": "Regenerate when the Spec or saved configuration changes. Enabled by default for new Projects. Set false to generate only when requested.",
             "type": "boolean"
+          },
+          "config": {
+            "description": "Shared defaults inherited by every Target. A Target's config overrides these defaults; GraphQL settings remain Spec-owned.",
+            "anyOf": [
+              {
+                "description": "Shared generated-client and tooling behavior for a stored Project. Every Target inherits these defaults. Target.config is merged over them for one Target; top-level values replace defaults while cli, mcp, auth, readme, and package merge by field. GraphQL-only source settings live on the Project's Spec and are rejected in both stored config scopes.",
+                "properties": {
+                  "globals": {
+                    "description": "Wire names of query/header parameters that become settable once on the generated client and auto-apply to every operation that accepts them; per-call values win. Names that match nothing are reported as generation warnings.",
+                    "maxItems": 20,
+                    "type": "array"
+                  },
+                  "retries": {
+                    "description": "Retry behavior. Top-level fields adjust every operation; operations maps operationId or \"METHOD /path\" keys to per-operation overrides.",
+                    "type": "object"
+                  },
+                  "pagination": {
+                    "description": "Per-operation pagination control, keyed by operationId or \"METHOD /path\". Unmatched keys are reported as generation warnings.",
+                    "type": "object"
+                  },
+                  "auth": {
+                    "description": "Public authentication defaults for generated clients and tools. Stored Projects own the OAuth server, application catalog, and identity policy; one-shot generation accepts the same shape for one run. Runtime credentials and client secrets are never accepted.",
+                    "type": "object"
+                  },
+                  "cli": {
+                    "description": "How the generated CLI behaves. Part of Config.",
+                    "type": "object"
+                  },
+                  "mcp": {
+                    "description": "How generated MCP servers and the Typeship-hosted endpoint behave. Part of Config.",
+                    "type": "object"
+                  },
+                  "readme": {
+                    "description": "Generated README behavior. Part of Config.",
+                    "type": "object"
+                  },
+                  "package": {
+                    "description": "Published-package metadata the API spec does not own. Repository is derived from each destination.",
+                    "type": "object"
+                  },
+                  "docs_url": {
+                    "format": "uri",
+                    "description": "The API's documentation site. Read through its llms.txt by the generated CLI's docs command, the MCP server's docs tools, and the package's AGENTS.md. Defaults to the Spec's externalDocs URL.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "docs_index_url": {
+                    "format": "uri",
+                    "description": "Exact llms.txt URL when the documentation site does not publish it at docs_url + /llms.txt.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "format": "date-time",
@@ -1154,6 +1218,15 @@ Output schema:
           },
           "updated_at": {
             "format": "date-time",
+            "description": "When the project configuration last changed.",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Server-generated identifier used to correlate this response with Typeship logs.",
+            "examples": [
+              "req_3k8m1v6q9p2d7h4c"
+            ],
+            "pattern": "^req_[a-z0-9]{16}$",
             "type": "string"
           }
         },
@@ -1182,7 +1255,7 @@ Results contain `items` and `hasMore`. When another page exists, `nextPage` cont
 
 ### `projects_create`
 
-Create a project
+Create a Project
 
 `POST /projects`
 
@@ -2091,7 +2164,6 @@ Output schema:
 
 ```json
 {
-  "description": "Project-owned identity, Spec reference, generation controls, and shared configuration.",
   "properties": {
     "id": {
       "description": "Unique identifier for a project.",
@@ -2208,7 +2280,7 @@ Output schema:
 
 ### `projects_get`
 
-Get a project
+Get a Project
 
 `GET /projects/{project_id}`
 
@@ -2262,7 +2334,6 @@ Output schema:
 
 ```json
 {
-  "description": "Project-owned identity, Spec reference, generation controls, and shared configuration.",
   "properties": {
     "id": {
       "description": "Unique identifier for a project.",
@@ -2379,7 +2450,7 @@ Output schema:
 
 ### `projects_delete`
 
-Delete a project
+Delete a Project
 
 `DELETE /projects/{project_id}`
 
@@ -2473,7 +2544,7 @@ Output schema:
 
 ### `projects_update`
 
-Update a project
+Update a Project
 
 `PATCH /projects/{project_id}`
 
@@ -2901,7 +2972,6 @@ Output schema:
 
 ```json
 {
-  "description": "Project-owned identity, Spec reference, generation controls, and shared configuration.",
   "properties": {
     "id": {
       "description": "Unique identifier for a project.",
@@ -3018,7 +3088,7 @@ Output schema:
 
 ### `projects_generate`
 
-Start generation for active Targets
+Generate a Project's Targets
 
 `POST /projects/{project_id}/generate`
 
@@ -3094,7 +3164,6 @@ Output schema:
   "properties": {
     "data": {
       "items": {
-        "description": "Generation metadata returned by collection endpoints.",
         "properties": {
           "id": {
             "description": "Unique identifier for a generation.",
@@ -3595,7 +3664,7 @@ Output schema:
 
 ### `specs_update`
 
-Update and resolve a Spec
+Update a Spec
 
 `PATCH /specs/{spec_id}`
 
@@ -4241,7 +4310,7 @@ Output schema:
 
 ### `specs_refresh`
 
-Refresh a Spec from its configured source
+Refresh a Spec
 
 `POST /specs/{spec_id}/refresh`
 
@@ -5761,7 +5830,7 @@ Results contain `items` and `hasMore`. When another page exists, `nextPage` cont
 
 ### `targets_create`
 
-Create an independently configured Target
+Create a Target
 
 `POST /targets`
 
@@ -5795,15 +5864,6 @@ Input schema:
       "maxLength": 80,
       "type": "string",
       "example": "Parcel CLI"
-    },
-    "spec_id": {
-      "description": "Unique identifier for a project's logical API Spec.",
-      "examples": [
-        "spec_2p8m4q7k1v9d6h3c"
-      ],
-      "pattern": "^spec_[a-z0-9]{16}$",
-      "type": "string",
-      "example": "spec_2p8m4q7k1v9d6h3c"
     },
     "type": {
       "enum": [
@@ -6315,7 +6375,6 @@ Input schema:
   "required": [
     "project_id",
     "name",
-    "spec_id",
     "type"
   ]
 }
@@ -6331,7 +6390,6 @@ Example `tools/call` parameters:
     "arguments": {
       "project_id": "prj_4f8k2m7x9q1v6b3n",
       "name": "Parcel CLI",
-      "spec_id": "spec_2p8m4q7k1v9d6h3c",
       "type": "cli",
       "config": {
         "cli": {
@@ -6890,7 +6948,7 @@ Output schema:
 
 ### `targets_delete`
 
-Delete an unused Target
+Delete a Target
 
 `DELETE /targets/{target_id}`
 
@@ -7680,7 +7738,7 @@ Output schema:
 
 ### `targets_adopt`
 
-Adopt a verified existing package as the latest release
+Adopt a package release
 
 `POST /targets/{target_id}/adopt`
 
@@ -8733,7 +8791,7 @@ Output schema:
 
 ### `drafts_update`
 
-Select an exact Draft version or return to automatic versioning
+Update a Draft
 
 `PATCH /drafts/{draft_id}`
 
@@ -9044,7 +9102,7 @@ Output schema:
 
 ### `drafts_list_files`
 
-List customized and conflicted files on a Draft
+List a Draft's files
 
 `GET /drafts/{draft_id}/files`
 
@@ -9314,7 +9372,7 @@ Results contain `items` and `hasMore`. When another page exists, `nextPage` cont
 
 ### `drafts_resolve`
 
-Resolve selected Draft files
+Resolve Draft conflicts
 
 `POST /drafts/{draft_id}/resolve`
 
@@ -9754,7 +9812,7 @@ Output schema:
 
 ### `drafts_recover`
 
-Approve recovery from rewritten default-branch history
+Recover a Draft's history
 
 `POST /drafts/{draft_id}/recover`
 
@@ -10064,7 +10122,7 @@ Output schema:
 
 ### `releases_list`
 
-List releases
+List Releases
 
 `GET /releases`
 
@@ -10497,7 +10555,7 @@ Results contain `items` and `hasMore`. When another page exists, `nextPage` cont
 
 ### `releases_get`
 
-Get a release
+Get a Release
 
 `GET /releases/{release_id}`
 
@@ -10899,7 +10957,7 @@ Output schema:
 
 ### `releases_retry`
 
-Retry publishing a release
+Retry publishing a Release
 
 `POST /releases/{release_id}/retry`
 
@@ -12549,7 +12607,7 @@ Output schema:
 
 ### `publications_list`
 
-List publications
+List Publications
 
 `GET /publications`
 
@@ -12880,7 +12938,7 @@ Results contain `items` and `hasMore`. When another page exists, `nextPage` cont
 
 ### `publications_get`
 
-Get a publication
+Get a Publication
 
 `GET /publications/{publication_id}`
 
@@ -13179,7 +13237,7 @@ Output schema:
 
 ### `generations_list`
 
-List generations
+List Generations
 
 `GET /generations`
 
@@ -13263,7 +13321,6 @@ Output schema:
     "items": {
       "type": "array",
       "items": {
-        "description": "Generation metadata returned by collection endpoints.",
         "properties": {
           "id": {
             "description": "Unique identifier for a generation.",
@@ -13608,7 +13665,7 @@ Results contain `items` and `hasMore`. When another page exists, `nextPage` cont
 
 ### `generations_get`
 
-Get a generation
+Get a Generation
 
 `GET /generations/{generation_id}`
 
@@ -14155,7 +14212,7 @@ Results contain `items` and `hasMore`. When another page exists, `nextPage` cont
 
 ### `files_get`
 
-Get a file
+Get a File
 
 `GET /files/{file_id}`
 
@@ -14305,7 +14362,7 @@ Output schema:
 
 ### `organization_get`
 
-The organization behind the presented credentials
+Get the Organization
 
 `GET /organization`
 
