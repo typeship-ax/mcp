@@ -77,17 +77,35 @@ function decode(value: string): Record<string, unknown> {
 
 interface SigningKey { kty?: string; kid?: string; alg?: string; use?: string; key_ops?: string[]; n?: string; e?: string; crv?: string; x?: string; y?: string; d?: string; k?: string }
 
-function principalFor(claims: Record<string, unknown>, configuration: McpAuthorizationConfiguration): McpPrincipal {
+/** Providers name granted scopes in `scope` (RFC 8693/9068, a space-separated
+ * string) or `scp` (Okta and Entra: a string or an array of strings). */
+function grantedScopes(claims: Record<string, unknown>): string[] {
+  const scopes: string[] = [];
+  if (claims.scope !== undefined) {
+    if (typeof claims.scope !== "string" || claims.scope.length > 10_000) throw invalid();
+    scopes.push(...claims.scope.split(" ").filter(Boolean));
+  }
+  if (claims.scp !== undefined) {
+    if (typeof claims.scp === "string") {
+      if (claims.scp.length > 10_000) throw invalid();
+      scopes.push(...claims.scp.split(" ").filter(Boolean));
+    } else if (Array.isArray(claims.scp) && claims.scp.length <= 100 && claims.scp.every(s => typeof s === "string" && s.length > 0 && s.length <= 500)) {
+      scopes.push(...claims.scp as string[]);
+    } else throw invalid();
+  }
+  if (scopes.some(s => !scopePattern.test(s))) throw invalid();
+  return scopes;
+}
+
+function principalFor(claims: Record<string, unknown>, configuration: McpAuthorizationConfiguration, audience: unknown = claims.aud): McpPrincipal {
   const now = Date.now() / 1000;
-  const audiences = typeof claims.aud === "string" ? [claims.aud] : claims.aud;
+  const audiences = typeof audience === "string" ? [audience] : audience;
   if (claims.cnf !== undefined || claims.iss !== configuration.issuer || typeof claims.sub !== "string" || !claims.sub || claims.sub.length > 1000 ||
     !Array.isArray(audiences) || !audiences.every(a => typeof a === "string") || !audiences.includes(configuration.resource) ||
     typeof claims.exp !== "number" || !Number.isFinite(claims.exp) || claims.exp <= now ||
     (claims.nbf !== undefined && (typeof claims.nbf !== "number" || !Number.isFinite(claims.nbf) || claims.nbf > now)) ||
-    (claims.iat !== undefined && (typeof claims.iat !== "number" || !Number.isFinite(claims.iat) || claims.iat > now + 60)) ||
-    (claims.scope !== undefined && (typeof claims.scope !== "string" || claims.scope.length > 10_000))) throw invalid();
-  const scopes = typeof claims.scope === "string" ? claims.scope.split(" ").filter(Boolean) : [];
-  if (scopes.some(s => !scopePattern.test(s))) throw invalid();
+    (claims.iat !== undefined && (typeof claims.iat !== "number" || !Number.isFinite(claims.iat) || claims.iat > now + 60))) throw invalid();
+  const scopes = grantedScopes(claims);
   if (configuration.scopes!.some(s => !scopes.includes(s))) throw new McpAuthorizationError(403, "insufficient_scope");
   return Object.freeze({ issuer: configuration.issuer, subject: claims.sub, resource: configuration.resource, scopes: Object.freeze([...new Set(scopes)]), claims: Object.freeze(claims) });
 }
@@ -113,11 +131,13 @@ function introspector(input: McpTokenIntrospectionConfiguration, configuration: 
     if (!data || typeof data.active !== "boolean") throw unavailable();
     if (!data.active || (data.token_type !== undefined && (typeof data.token_type !== "string" || data.token_type.toLowerCase() !== "bearer"))) throw invalid();
     // RFC 7662 permits omitted issuer: the owner-pinned authenticated endpoint
-    // establishes it. Audience, subject and expiry are mandatory for this handler.
-    // Never substitute client_id for the MCP resource audience.
+    // establishes it. Subject and expiry are mandatory for this handler. The
+    // audience is `aud`; a provider that omits it must name the exact MCP
+    // resource in `resource` instead. Never substitute client_id for it.
     const claims = { ...data, iss: data.iss === undefined ? configuration.issuer : data.iss };
     for (const key of ["token", "access_token", "refresh_token", "id_token", "client_secret"]) delete (claims as Record<string, unknown>)[key];
-    return principalFor(claims, configuration);
+    const audience = data.aud === undefined ? data.resource : data.aud;
+    return principalFor(claims, configuration, audience);
   };
 }
 

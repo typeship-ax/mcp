@@ -129,6 +129,10 @@ export interface OpLike {
   safety?: "read" | "write" | "destructive";
   /** Whether the operation accepts or requires an API credential. */
   auth?: "required" | "optional" | "none";
+  /** Complete credential alternatives this runtime can send; empty when the
+   * operation's only schemes are unsupported (digest, mutual TLS, …). */
+  credentialOptions?: string[][];
+  security?: Record<string, string[]>[];
   /** Schema-derived, valid wire arguments for examples and agent discovery. */
   exampleArguments?: Record<string, unknown>;
   /** Page-walking config (same shape as the SDK's PageConfig), when paginated. */
@@ -1495,17 +1499,26 @@ export interface ErrorContext {
   hadCredential?: boolean;
 }
 
-function extractRetryAfter(e: { headers?: unknown; body?: unknown }): string | undefined {
-  const headers = e.headers as { get?: (name: string) => string | null } | undefined;
-  const fromHeader = headers?.get?.("retry-after");
-  if (fromHeader) return fromHeader;
-  const match = /retry after (\d+)s/i.exec(JSON.stringify(e.body ?? ""));
-  return match?.[1];
+function rateLimitNextStep(retryAt: unknown): string {
+  if (retryAt instanceof Date && !Number.isNaN(retryAt.getTime())) {
+    const at = new Date(Math.ceil(retryAt.getTime() / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+    return "Rate limited: wait until " + at + ", then call again. This is not a credential problem.";
+  }
+  return "Rate limited: back off, then call again once; the request already honored any Retry-After within its ceiling.";
+}
+
+/** Error codes APIs report inside a 2xx body (Slack's `error`), mapped to
+ * the stable codes when their meaning is unambiguous. */
+function payloadFailureCode(code: unknown): ErrorCode | undefined {
+  if (typeof code !== "string") return undefined;
+  if (/^(not_authed|invalid_auth|token_revoked|token_expired|account_inactive|unauthorized|unauthenticated|forbidden|access_denied|missing_scope)$/i.test(code)) return "AUTH_INVALID";
+  if (/^(ratelimited|rate_limited|rate_limit_exceeded|too_many_requests)$/i.test(code)) return "RATE_LIMITED";
+  return undefined;
 }
 
 /** Classify an SDK error result by status: the code and what to do next. */
 export function classifyError(error: unknown, context: ErrorContext = {}): { code: ErrorCode; nextSteps: string[] } {
-  const e = (error ?? {}) as { name?: string; message?: string; status?: number; body?: unknown; violations?: unknown };
+  const e = (error ?? {}) as { name?: string; message?: string; status?: number; code?: unknown; body?: unknown; violations?: unknown; rateLimit?: { retryAt?: Date } };
   const message = e.message ?? String(error);
   if (e.violations !== undefined) return { code: "VALIDATION_FAILED", nextSteps: ["Fix the fields named in violations and call again."] };
   if (e.name === "TransportError" || (typeof e.status !== "number" && /fetch|ECONN|ENOTFOUND|timed out|TLS|abort/i.test(message))) {
@@ -1514,6 +1527,15 @@ export function classifyError(error: unknown, context: ErrorContext = {}): { cod
   const status = typeof e.status === "number" ? e.status : 0;
   const body = e.body as { errors?: { code?: string; message?: string }[] } | undefined;
   const auth = context.authHint ? context.authHint.trim().replace(/[.]?$/, ".") : null;
+  // A rate limit can arrive as a 403 (GitHub); the SDK marks it either way.
+  if (status === 429 || e.rateLimit !== undefined) return { code: "RATE_LIMITED", nextSteps: [rateLimitNextStep(e.rateLimit?.retryAt)] };
+  // A failure the API reported inside a 2xx body.
+  if (e.name === "PayloadError") {
+    const reported = payloadFailureCode(e.code);
+    if (reported === "AUTH_INVALID") return { code: "AUTH_INVALID", nextSteps: ["The API rejected the credential (" + String(e.code) + ")." + (auth ? " " + auth : "")] };
+    if (reported === "RATE_LIMITED") return { code: "RATE_LIMITED", nextSteps: [rateLimitNextStep(undefined)] };
+    return { code: "CALL_FAILED", nextSteps: ["The API reported a failure in a successful response; body says why. Do not treat the call as done."] };
+  }
   if (status === 401) {
     return context.hadCredential
       ? { code: "AUTH_INVALID", nextSteps: ["The credential was rejected; it may be expired or for another environment." + (auth ? " " + auth : "")] }
@@ -1522,10 +1544,6 @@ export function classifyError(error: unknown, context: ErrorContext = {}): { cod
   if (status === 403) return { code: "AUTH_INVALID", nextSteps: ["The credential lacks access to this operation; it is not a retryable error."] };
   if (status === 402) return { code: "PLAN_LIMIT", nextSteps: ["The account's plan stops here; the body may name where to lift the limit. Do not retry the same call as is."] };
   if (status === 404) return { code: "NOT_FOUND", nextSteps: notFoundNextSteps(message, e.body) };
-  if (status === 429) {
-    const retryAfter = extractRetryAfter(e);
-    return { code: "RATE_LIMITED", nextSteps: [retryAfter ? "Wait " + retryAfter + " seconds, then call again." : "Back off and retry once; the request was already retried with the server's Retry-After."] };
-  }
   if (status === 422 && body?.errors?.[0]?.code === "spec_error") {
     return {
       code: "SPEC_INVALID",
@@ -1560,8 +1578,9 @@ function notFoundNextSteps(message: string, body: unknown): string[] {
 /** A typed API error as the agent should see it: name, a stable code, the
  * message, status, the API's body, where to read more, and what to do. */
 export function errorOutcome(error: unknown, context: ErrorContext = {}): ToolOutcome {
-  const e = error as { name?: string; message?: string; status?: number; body?: unknown; response?: { requestId?: string } };
+  const e = error as { name?: string; message?: string; status?: number; body?: unknown; rateLimit?: { retryAt?: Date }; response?: { requestId?: string } };
   const { code, nextSteps } = classifyError(error, context);
+  const retryAt = e?.rateLimit?.retryAt instanceof Date ? new Date(Math.ceil(e.rateLimit.retryAt.getTime() / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, "Z") : undefined;
   const bodyRequestId = e?.body && typeof e.body === "object" && !Array.isArray(e.body)
     ? (e.body as Record<string, unknown>).request_id ?? (e.body as Record<string, unknown>).requestId
     : undefined;
@@ -1572,11 +1591,22 @@ export function errorOutcome(error: unknown, context: ErrorContext = {}): ToolOu
     message: e?.message,
     ...(typeof e?.status === "number" ? { status: e.status } : {}),
     ...(requestId ? { request_id: requestId } : {}),
+    ...(retryAt ? { retry_at: retryAt } : {}),
     ...(e?.body !== undefined ? { body: e.body } : {}),
     ...(context.docsUrl ? { docs_url: context.docsUrl } : {}),
     next_steps: nextSteps,
   };
   return { text: JSON.stringify(structured), isError: true, structured };
+}
+
+/** A required operation whose schemes this server cannot send fails before
+ * any request, instead of calling the API without credentials. */
+export function unsupportedAuthOutcome(op: OpLike): ToolOutcome | null {
+  if (op.auth !== "required" || !op.credentialOptions || op.credentialOptions.some((alternative) => alternative.length > 0)) return null;
+  const schemes = [...new Set((op.security ?? []).flatMap((requirement) => Object.keys(requirement)))];
+  return textError(`${op.tool} requires ${schemes.length ? schemes.join(" or ") : "an authentication scheme"} authentication, which this MCP server cannot send.`, "NO_AUTH", [
+    "Call this operation from an SDK with a custom HTTP client that adds the credential, or ask the API owner to add a supported scheme.",
+  ]);
 }
 
 export function textError(text: string, code: ErrorCode = "CALL_FAILED", nextSteps: string[] = []): ToolOutcome {

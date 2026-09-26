@@ -27,14 +27,14 @@ import { GLOBALS, OMITTED_OPS, OPS, buildArgs, type OpSpec } from "./ops.js";
 import {
   DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, McpAccountLinkRequired, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
   createStdioRpcHandler, dataOutcome, errorOutcome, handleRpc, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, resolveReferences, serverInstructions,
-  takeCancelled, textError, toolDefinitions, visibleOps,
+  takeCancelled, textError, toolDefinitions, unsupportedAuthOutcome, visibleOps,
   type ArgumentIssue, type DocsSource, type McpServer, type OpLike, type RpcOutcome, type ToolOutcome,
 } from "./mcp-protocol.js";
 import { fetchDocsText } from "./docs.js";
 import { assertCredentialDestination, assertStoredIdentity, oauthSessionToken } from "./oauth-session.js";
 import { createCredentialStore } from "./credential-storage.js";
 import { identityPolicyOf, verifyClientIdentity, type IdentityConfiguration } from "./api-identity.js";
-import { parseNamedCredentials, resolveNamedCredentials, namedCredentialAvailability, type NamedCredentials, type CredentialSchemes } from "./named-credentials.js";
+import { parseNamedCredentials, resolveNamedCredentials, namedCredentialAvailability, missingCredentials, oauthSessionSchemes, type NamedCredentials, type CredentialSchemes } from "./named-credentials.js";
 import { resolveProfile, profileFlag, readProfileConfig } from "./auth-profiles.js";
 import { createMcpAuthorizer, McpAuthorizationError, type McpAuthorizationConfiguration, type McpTokenIntrospectionConfiguration, type McpPrincipal } from "./mcp-authorization.js";
 export type { McpAuthorizationConfiguration, McpTokenIntrospectionConfiguration, McpPrincipal } from "./mcp-authorization.js";
@@ -139,6 +139,7 @@ function makeClient(op: OpSpec): TypeshipClient {
   ]);
 
 
+  requireOperationCredentials(op, options);
   for (const g of GLOBALS) {
     const value = process.env["TYPESHIP_" + g.envSuffix];
     if (value !== undefined) options[g.option] = value;
@@ -155,6 +156,31 @@ function makeClient(op: OpSpec): TypeshipClient {
   clientKey = key;
   CLIENT_CREDENTIALS.set(client, Object.keys(options.credentials ?? {}).length > 0 || AUTH_SCALARS.some((a) => options[a.option] !== undefined) || options.basicAuth !== undefined || options.bearerToken !== undefined || options.clientCredentials !== undefined);
   return (clientInstance = client);
+}
+
+/** A required operation without one complete credential alternative stops
+ * before any request, as the CLI does, with the variables that supply it.
+ * Operations with no supported alternative are reported separately. */
+class MissingCredentialsError extends Error {
+  constructor(readonly outcome: ToolOutcome) { super("Missing credentials"); }
+}
+function requireOperationCredentials(op: OpSpec, options: ClientOptions & Record<string, unknown>): void {
+  if (op.auth !== "required") return;
+  const gap = missingCredentials(NAMED_SCHEMES, op.credentialOptions, options);
+  if (!gap || !gap.alternatives.length) return;
+  const names = new Set(gap.missing.flat());
+  const needs = (option: string) => [...names].some((name) => NAMED_SCHEMES[name]?.options.includes(option));
+  const scalars = AUTH_SCALARS.filter((scalar) => needs(scalar.option));
+  throw new MissingCredentialsError(textError(
+    op.tool + " needs one complete credential alternative. Missing security schemes: " + gap.missing.map((alternative) => alternative.join(" + ")).join(" OR ") + ". No request was sent.",
+    "NO_AUTH",
+    [
+      ...scalars.map((scalar) => "Set " + scalar.env + " in the MCP server's environment."),
+      ...(BASIC && needs("basicAuth") ? ["Set " + BASIC.envUser + " and " + BASIC.envPass + " in the MCP server's environment."] : []),
+      "Or set TYPESHIP_CREDENTIALS to a JSON object with every scheme in one alternative: " + gap.alternatives.map((alternative) => alternative.join(" + ")).join(" OR ") + ".",
+      "Credentials saved by '" + BIN + " login' are read on the next call without a restart.",
+    ],
+  ));
 }
 
 let clientInstance: TypeshipClient | undefined;
@@ -251,11 +277,14 @@ function referenceCacheFor(authHeader?: string): Map<string, string | number> {
 async function callOperation(op: OpSpec, rawArgs: Record<string, unknown>, remote?: RemoteContext): Promise<ToolOutcome> {
   const prepared = prepareCall(op as unknown as OpLike, rawArgs, { maxChars: MAX_RESULT_CHARS });
   if (!prepared.ok) return prepared.outcome;
+  const unsupported = unsupportedAuthOutcome(op as unknown as OpLike);
+  if (unsupported) return unsupported;
   // One client/session for the entire tool, including name-to-ID lookups.
   // If login changes during a lookup, the token callback rejects the old session.
   let client: TypeshipClient;
   try { client = remote ? await remote.client() : getClient(op); } catch (error) {
     if (remote && error instanceof McpAccountLinkRequired) throw error;
+    if (!remote && error instanceof MissingCredentialsError) return error.outcome;
     return textError(remote ? "API access is unavailable for this MCP account. Reconnect your API account or contact the server owner." : (error as Error).message);
   }
   const resolved = await resolveReferences(op as unknown as OpLike, prepared.call.args, {
