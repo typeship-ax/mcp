@@ -22,7 +22,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TypeshipClient, formatDebugEvent, type ClientOptions, type DebugEvent } from "./index.js";
-import { asApiResult } from "./core/http.js";
+import { asApiResult, mediaTypeForPath } from "./core/http.js";
 import { GLOBALS, OMITTED_OPS, OPS, buildArgs, type OpSpec } from "./ops.js";
 import {
   DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, McpAccountLinkRequired, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
@@ -34,7 +34,7 @@ import { fetchDocsText } from "./docs.js";
 import { assertCredentialDestination, assertStoredIdentity, oauthSessionToken } from "./oauth-session.js";
 import { createCredentialStore } from "./credential-storage.js";
 import { identityPolicyOf, verifyClientIdentity, type IdentityConfiguration } from "./api-identity.js";
-import { parseNamedCredentials, resolveNamedCredentials, namedCredentialAvailability, missingCredentials, oauthSessionSchemes, type NamedCredentials, type CredentialSchemes } from "./named-credentials.js";
+import { parseNamedCredentials, resolveNamedCredentials, namedCredentialAvailability, missingCredentials, oauthSessionSchemes, parseExtraHeaders, applyExtraHeaders, type NamedCredentials, type CredentialSchemes } from "./named-credentials.js";
 import { resolveProfile, profileFlag, readProfileConfig } from "./auth-profiles.js";
 import { createMcpAuthorizer, McpAuthorizationError, type McpAuthorizationConfiguration, type McpTokenIntrospectionConfiguration, type McpPrincipal } from "./mcp-authorization.js";
 export type { McpAuthorizationConfiguration, McpTokenIntrospectionConfiguration, McpPrincipal } from "./mcp-authorization.js";
@@ -53,8 +53,14 @@ function noteClientInfo(message: unknown): void {
 }
 const DEFAULT_BASE_URL = "https://typeship.dev/api/v1";
 const NAMED_SCHEMES: CredentialSchemes = {"apiKey":{"kind":"bearer","options":["bearerToken"]}};
-const AUTH_SCALARS: { option: string; flag: string; env: string }[] = [{"option":"bearerToken","flag":"token","env":"TYPESHIP_TOKEN"}];
+const AUTH_SCALARS: { option: string; flag: string; env: string }[] = [{"option":"bearerToken","flag":"token","env":"TYPESHIP_API_KEY"}];
 const BASIC: { envUser: string; envPass: string } | null = null;
+/** Older generic credential variable names, read when the documented one is unset. */
+const ENV_ALIASES: Record<string, string[]> = {"TYPESHIP_API_KEY":["TYPESHIP_TOKEN"]};
+for (const [name, aliases] of Object.entries(ENV_ALIASES)) {
+  const alias = aliases.find((candidate) => process.env[candidate] !== undefined);
+  if (process.env[name] === undefined && alias !== undefined) process.env[name] = process.env[alias];
+}
 
 const ENVIRONMENTS: Record<string, string> = {};
 const DOCS_URL_DEFAULT: string | null = "https://typeship.dev";
@@ -71,10 +77,11 @@ const IDENTITY_TOOL: string | null = null;
 const ARGV = process.argv.slice(2);
 const READ_ONLY = ARGV.includes("--read-only") || process.env["TYPESHIP_MCP_READ_ONLY"] === "1" || process.env["TYPESHIP_MCP_READ_ONLY"] === "true";
 const INCLUDE = parseIncludeList(ARGV.includes("--tools") ? ARGV[ARGV.indexOf("--tools") + 1] : process.env["TYPESHIP_MCP_TOOLS"]);
+const HEADER_ARGS = ARGV.flatMap((arg, index) => arg === "--header" && ARGV[index + 1] !== undefined ? [ARGV[index + 1]!] : arg.startsWith("--header=") ? [arg.slice("--header=".length)] : []);
 const MAX_RESULT_CHARS = Number(process.env["TYPESHIP_MCP_MAX_RESULT_CHARS"]) || DEFAULT_MAX_RESULT_CHARS;
 /** One sentence on where credentials come from on each transport; goes
  * into the instructions and into 401 results. */
-const AUTH_HINT_STDIO = "Credentials come from the MCP server's environment (TYPESHIP_CREDENTIALS, TYPESHIP_TOKEN) or from 'typeship login'";
+const AUTH_HINT_STDIO = "Credentials come from the MCP server's environment (TYPESHIP_CREDENTIALS, TYPESHIP_API_KEY) or from 'typeship login'";
 const AUTH_HINT_HTTP = "Sign in to this MCP server. The server resolves your API credentials separately; its connection token is never forwarded to the API.";
 /** The tool list is fixed at generation, so clients may cache it for an
  * hour and shared caches may hold it (identical for every caller). */
@@ -149,6 +156,9 @@ function makeClient(op: OpSpec): TypeshipClient {
   }
   // The local MCP server identifies itself (surface + the client it serves, when announced).
   options.defaultHeaders = { "User-Agent": PKG_NAME + "-mcp/" + SERVER_VERSION + (MCP_CLIENT_NAME ? " (client=" + MCP_CLIENT_NAME + ")" : "") };
+  // --header / TYPESHIP_HEADERS: headers the spec does not declare, applied last.
+  const extraHeaders = LOCAL_CREDENTIALS ? parseExtraHeaders(process.env["TYPESHIP_HEADERS"], HEADER_ARGS, "TYPESHIP_HEADERS") : {};
+  if (Object.keys(extraHeaders).length) options.onRequest = (context) => { applyExtraHeaders(context.headers, extraHeaders); };
   // Keep the SDK's machine-token cache while re-evaluating local configuration.
   const key = createHash("sha256").update(JSON.stringify([options, config, profile?.name, stored?.oauth?.sessionId, null, process.env["TYPESHIP_DEBUG"]])).digest("hex");
   if (clientInstance && clientKey === key) return clientInstance;
@@ -212,8 +222,14 @@ async function callOperationRaw(op: OpSpec, rawArgs: Record<string, unknown>, re
   let rawBody: unknown = op.bodyStyle === "data" ? args.body : undefined;
   if (LOCAL_PROCESS && !remote) {
     for (const p of op.params) {
-      if (p.type !== "file" || typeof values[p.name] !== "string") continue;
-      try { values[p.name] = fileArgument(values[p.name] as string); } catch (e) { fileIssues.push({ code: "INVALID_ARGUMENT", argument: p.name, message: p.name + ": cannot read " + String(values[p.name]) + " (" + (e as Error).message + ")" }); }
+      if (p.type !== "file") continue;
+      const paths = values[p.name];
+      if (typeof paths !== "string" && !(Array.isArray(paths) && paths.every((path) => typeof path === "string"))) continue;
+      const files: File[] = [];
+      for (const path of Array.isArray(paths) ? paths as string[] : [paths]) {
+        try { files.push(fileArgument(path)); } catch (e) { fileIssues.push({ code: "INVALID_ARGUMENT", argument: p.name, message: p.name + ": cannot read " + path + " (" + (e as Error).message + ")" }); }
+      }
+      values[p.name] = Array.isArray(paths) ? files : files[0];
     }
     if (op.bodyKind === "binary" && typeof rawBody === "string") {
       try { rawBody = fileArgument(rawBody); } catch (e) { fileIssues.push({ code: "INVALID_ARGUMENT", argument: "body", message: "body: cannot read " + String(rawBody) + " (" + (e as Error).message + ")" }); }
@@ -322,7 +338,7 @@ const HAS_UPLOADS = MCP_OPS.some((op) => op.bodyKind === "multipart" || op.bodyK
 
 /** A local file as an upload part (multipart field or raw body). */
 function fileArgument(path: string): File {
-  return new File([readFileSync(path)], basename(path));
+  return new File([readFileSync(path)], basename(path), { type: mediaTypeForPath(path) });
 }
 
 /** Where binary responses land on a local server: a per-server temp dir. */

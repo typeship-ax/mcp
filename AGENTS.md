@@ -24,7 +24,7 @@ petstore Spec is a runnable sample.
 - Start with the local build or installation instructions in `README.md`. Generation does not publish a registry package.
 
 ## Authentication
-- Bearer token: set the `TYPESHIP_TOKEN` environment variable.
+- Bearer token: set the `TYPESHIP_API_KEY` environment variable.
 
 ## MCP server
 - Use the README's MCP connection instructions. MCP `2025-11-25` and `2026-07-28` are selected automatically; no client protocol flags are required.

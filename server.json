@@ -31,7 +31,7 @@
       "runtimeHint": "npx",
       "environmentVariables": [
         {
-          "name": "TYPESHIP_TOKEN",
+          "name": "TYPESHIP_API_KEY",
           "description": "Credential used by typeship.",
           "isRequired": false,
           "isSecret": true

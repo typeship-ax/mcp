@@ -36,7 +36,7 @@ Connect with your client's default settings. This server supports MCP `2025-11-2
 
 The npm connections below require `@typeship-ax/mcp` to be published under your package identity. To use downloaded source before publishing, use the local configuration in the next section. Hosted connections require a deployed server.
 
-Authentication: provide `TYPESHIP_TOKEN` through the MCP client's environment or secret settings. Keep credential values out of URLs and command arguments.
+Authentication: provide `TYPESHIP_API_KEY` through the MCP client's environment or secret settings. Keep credential values out of URLs and command arguments.
 
 For Cursor, merge a local or remote server entry from this README into `mcpServers` in `.cursor/mcp.json`, then enable the server in Cursor’s MCP settings.
 
@@ -77,7 +77,7 @@ A zero-dependency stdio server exposing a compact discovery surface: `search_doc
         "/absolute/path/to/package/dist/mcp.js"
       ],
       "env": {
-        "TYPESHIP_TOKEN": "replace-with-your-credential"
+        "TYPESHIP_API_KEY": "replace-with-your-credential"
       }
     }
   }
@@ -93,7 +93,7 @@ claude mcp add --transport stdio typeship -- node /absolute/path/to/package/dist
 claude mcp list
 ```
 
-Replace the credential placeholder using the MCP client's secret storage when it has one. The local server reads `TYPESHIP_TOKEN` from its environment; credentials never belong in command arguments. If you also generated the CLI, its `typeship login` command stores credentials the local MCP server can reuse.
+Replace the credential placeholder using the MCP client's secret storage when it has one. The local server reads `TYPESHIP_API_KEY` from its environment; credentials never belong in command arguments. If you also generated the CLI, its `typeship login` command stores credentials the local MCP server can reuse.
 
 Tool input schemas are derived from the OpenAPI spec, so agents see real parameter types and required fields. Arguments are checked before anything reaches the API (unknown or mistyped ones come back as one `isError` result, nothing is dropped), every tool takes `fields` to keep only the result keys it needs, and errors carry a stable `code` and `next_steps`.
 
