@@ -41,7 +41,7 @@ function talk(env, requests) {
 }
 
 test("server/discover, tools/list, tools/call over stdio", async () => {
-  const mock = await startMock({ status: 200, contentType: "application/json", body: "{\"files\":[{\"path\":\"example\",\"content\":\"example\",\"mode\":\"100644\"}],\"download\":{\"url\":\"https://example.com\",\"expires_at\":\"2024-01-01T00:00:00Z\",\"sha256\":\"example\",\"size_bytes\":1,\"file_count\":1},\"warnings\":[{\"code\":\"example\",\"message\":\"example\",\"operation\":\"example\"}],\"coverage\":{\"generated\":1,\"omitted\":1,\"total\":1,\"omitted_operations\":[\"example\"],\"reason\":\"anonymous\",\"signup_url\":\"https://example.com\",\"upgrade_url\":\"https://example.com\"},\"claim\":null,\"request_id\":\"req_3k8m1v6q9p2d7h4c\"}" });
+  const mock = await startMock({ status: 200, contentType: "application/json", body: "{\"object\":\"package\",\"files\":[{\"path\":\"example\",\"content\":\"example\",\"mode\":\"100644\"}],\"download\":{\"url\":\"https://example.com\",\"expires_at\":\"2024-01-01T00:00:00Z\",\"sha256\":\"example\",\"size_bytes\":1,\"file_count\":1},\"warnings\":[{\"code\":\"example\",\"message\":\"example\",\"operation\":\"example\"}],\"coverage\":{\"generated\":1,\"omitted\":1,\"total\":1,\"omitted_operations\":[\"example\"],\"reason\":\"anonymous\",\"signup_url\":\"https://example.com\",\"upgrade_url\":\"https://example.com\"},\"claim\":null,\"request_id\":\"req_3k8m1v6q9p2d7h4c\"}" });
   try {
     const responses = await talk({ "TYPESHIP_BASE_URL": mock.url, "TYPESHIP_CREDENTIALS": "{\"apiKey\":\"test-token\"}" }, [
       { jsonrpc: "2.0", id: 1, method: "server/discover", params: { _meta: META } },

@@ -14,7 +14,7 @@ For complete input and output schemas, use [`api.json`](./api.json), the machine
 
 ### `generate_run`
 
-Generate one package from a Spec
+Generate a package from a Spec
 
 `POST /generate`
 
@@ -852,6 +852,11 @@ Output schema:
 ```json
 {
   "properties": {
+    "object": {
+      "const": "package",
+      "description": "One generated package. It has no ID: download it with download.url before download.expires_at.",
+      "type": "string"
+    },
     "files": {
       "items": {
         "properties": {
@@ -14416,6 +14421,14 @@ Input schema:
       "type": "string",
       "description": "Opaque cursor from the preceding page's next_cursor. Valid only for the same organization, operation, filters, and ordering that issued it. Omit to start at the first page. Empty or malformed cursors, and cursors issued for different filters, return 400 cursor_invalid; start again from the first page. Repeated cursors return 400 query_param_invalid. The page limit may change between requests."
     },
+    "status": {
+      "enum": [
+        "active",
+        "revoked"
+      ],
+      "type": "string",
+      "description": "Only keys with this status."
+    },
     "fields": {
       "type": "array",
       "items": {
@@ -14463,8 +14476,13 @@ Output schema:
             "description": "Last four characters of the secret; the secret itself is never stored.",
             "type": "string"
           },
-          "revoked": {
-            "type": "boolean"
+          "status": {
+            "enum": [
+              "active",
+              "revoked"
+            ],
+            "description": "active: the key authenticates requests. revoked: it no longer does and cannot be restored; create a new key in the Console or with typeship login.",
+            "type": "string"
           },
           "last_used_at": {
             "format": "date-time",
@@ -14585,8 +14603,13 @@ Output schema:
       "description": "Last four characters of the secret; the secret itself is never stored.",
       "type": "string"
     },
-    "revoked": {
-      "type": "boolean"
+    "status": {
+      "enum": [
+        "active",
+        "revoked"
+      ],
+      "description": "active: the key authenticates requests. revoked: it no longer does and cannot be restored; create a new key in the Console or with typeship login.",
+      "type": "string"
     },
     "last_used_at": {
       "format": "date-time",
@@ -14621,11 +14644,11 @@ Output schema:
 
 Revoke an API key
 
-`DELETE /api-keys/{api_key_id}`
+`POST /api-keys/{api_key_id}/revoke`
 
-Safety: **destructive** · Authentication: **required**
+Safety: **write** · Authentication: **required**
 
-Revokes a key. Repeating the request returns the same result.
+Revokes a key immediately. The key stays listed with `status: revoked`. Repeating the request returns the same result.
 
 With OAuth, members can revoke their own keys; organization admins can revoke any key. Organization API keys can revoke any key in their organization.
 See [conditional writes](https://typeship.dev/docs/typeship-api#conditional-writes) for ETag and If-Match.
@@ -14673,8 +14696,7 @@ Example `tools/call` parameters:
     "operation": "api_keys_revoke",
     "arguments": {
       "api_key_id": "apikey_2nY8mR6pQ4vK9cH3"
-    },
-    "confirm": true
+    }
   }
 }
 ```
@@ -14698,8 +14720,13 @@ Output schema:
       "description": "Last four characters of the secret; the secret itself is never stored.",
       "type": "string"
     },
-    "revoked": {
-      "type": "boolean"
+    "status": {
+      "enum": [
+        "active",
+        "revoked"
+      ],
+      "description": "active: the key authenticates requests. revoked: it no longer does and cannot be restored; create a new key in the Console or with typeship login.",
+      "type": "string"
     },
     "last_used_at": {
       "format": "date-time",
