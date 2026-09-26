@@ -32,7 +32,7 @@
       "environmentVariables": [
         {
           "name": "TYPESHIP_API_KEY",
-          "description": "Credential used by typeship.",
+          "description": "typeship token, sent as Authorization: Bearer.",
           "isRequired": false,
           "isSecret": true
         }

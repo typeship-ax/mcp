@@ -129,6 +129,8 @@ export interface OpLike {
   safety?: "read" | "write" | "destructive";
   /** Whether the operation accepts or requires an API credential. */
   auth?: "required" | "optional" | "none";
+  /** The API Spec declares no security; the generic token is optional. */
+  authNotDeclared?: boolean;
   /** Complete credential alternatives this runtime can send; empty when the
    * operation's only schemes are unsupported (digest, mutual TLS, …). */
   credentialOptions?: string[][];
@@ -682,8 +684,8 @@ export const SEARCH_DOCS_TOOL: ToolDefinition = {
 
 export const READ_DOCS_TOOL: ToolDefinition = {
   name: "read_docs",
-  description: 'Read a documentation page: an operation reference (a tool name, or dotted "resource.method") or a docs-site guide page by name or URL.',
-  inputSchema: { type: "object", properties: { page: { type: "string" } }, required: ["page"] },
+  description: 'Read a documentation page: an operation reference (a tool name, or dotted "resource.method") or a docs-site guide page by name or URL. Long pages come in parts; pass the offset a part ends with to continue.',
+  inputSchema: { type: "object", properties: { page: { type: "string" }, offset: { type: "integer", minimum: 0, description: "Character offset to continue a long page from, default 0" } }, required: ["page"] },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
 
@@ -1485,7 +1487,7 @@ export async function binaryOutcome(blob: Blob, options: BinaryOptions = {}): Pr
 /** Stable codes an agent can branch on (the same vocabulary as the
  * generated CLI's error envelope). Additive only. */
 export type ErrorCode =
-  | "NO_AUTH" | "AUTH_INVALID" | "PLAN_LIMIT" | "NOT_FOUND" | "INVALID_REQUEST" | "RATE_LIMITED"
+  | "NO_AUTH" | "AUTH_INVALID" | "INSUFFICIENT_SCOPE" | "PLAN_LIMIT" | "NOT_FOUND" | "INVALID_REQUEST" | "RATE_LIMITED"
   | "SPEC_INVALID" | "SERVER_ERROR" | "NETWORK_ERROR" | "VALIDATION_FAILED" | "INVALID_ARGUMENTS" | "CONFIRMATION_REQUIRED"
   | "REFERENCE_NOT_FOUND" | "REFERENCE_AMBIGUOUS" | "REFERENCE_SCAN_LIMIT" | "NOT_AVAILABLE" | "CALL_FAILED"
   | "ACCOUNT_LINK_REQUIRED" | "ACCOUNT_LINK_CANCELLED";
@@ -1497,6 +1499,8 @@ export interface ErrorContext {
   docsUrl?: string | null;
   /** True when a credential was sent with the request (401 means it was rejected). */
   hadCredential?: boolean;
+  /** OAuth scopes the operation requires; a 403 then names them. */
+  requiredScopes?: string[];
 }
 
 function rateLimitNextStep(retryAt: unknown): string {
@@ -1529,8 +1533,11 @@ export function classifyError(error: unknown, context: ErrorContext = {}): { cod
   const auth = context.authHint ? context.authHint.trim().replace(/[.]?$/, ".") : null;
   // A rate limit can arrive as a 403 (GitHub); the SDK marks it either way.
   if (status === 429 || e.rateLimit !== undefined) return { code: "RATE_LIMITED", nextSteps: [rateLimitNextStep(e.rateLimit?.retryAt)] };
+  const scopes = context.requiredScopes ?? [];
+  const scopeFailure = { code: "INSUFFICIENT_SCOPE" as const, nextSteps: ["This operation requires the OAuth scopes: " + scopes.join(", ") + ". Use a credential granted them (with the CLI: login --scopes " + scopes.join(",") + "). If it already has them, the account may lack access to this resource."] };
   // A failure the API reported inside a 2xx body.
   if (e.name === "PayloadError") {
+    if (scopes.length && /^missing_scope$/i.test(String(e.code))) return scopeFailure;
     const reported = payloadFailureCode(e.code);
     if (reported === "AUTH_INVALID") return { code: "AUTH_INVALID", nextSteps: ["The API rejected the credential (" + String(e.code) + ")." + (auth ? " " + auth : "")] };
     if (reported === "RATE_LIMITED") return { code: "RATE_LIMITED", nextSteps: [rateLimitNextStep(undefined)] };
@@ -1541,6 +1548,7 @@ export function classifyError(error: unknown, context: ErrorContext = {}): { cod
       ? { code: "AUTH_INVALID", nextSteps: ["The credential was rejected; it may be expired or for another environment." + (auth ? " " + auth : "")] }
       : { code: "NO_AUTH", nextSteps: ["No credential was sent." + (auth ? " " + auth : "")] };
   }
+  if (status === 403 && scopes.length) return scopeFailure;
   if (status === 403) return { code: "AUTH_INVALID", nextSteps: ["The credential lacks access to this operation; it is not a retryable error."] };
   if (status === 402) return { code: "PLAN_LIMIT", nextSteps: ["The account's plan stops here; the body may name where to lift the limit. Do not retry the same call as is."] };
   if (status === 404) return { code: "NOT_FOUND", nextSteps: notFoundNextSteps(message, e.body) };
@@ -1665,7 +1673,8 @@ export function referenceText(op: OpLike): string {
     ...(op.description ? ["", op.description.trim()] : []),
     "",
     "Safety: " + safety + (safety === "destructive" ? " (execute requires confirm: true)" : ""),
-    ...(op.auth ? ["Authentication: " + op.auth] : []),
+    ...(op.auth ? ["Authentication: " + (op.authNotDeclared ? "not declared by the API Spec" : op.auth)] : []),
+    ...(requiredScopes(op.security).length ? ["Required OAuth scopes: " + requiredScopes(op.security).join(", ")] : []),
   ];
   if (op.params.length > 0) {
     lines.push("", "Arguments:");
@@ -1772,10 +1781,24 @@ export async function docsSearch(source: DocsSource, query: string, page = 1): P
   return { text: [...(coverage ? [coverage] : []), ...sections].join("\n\n"), isError: false, structured };
 }
 
-export async function docsRead(source: DocsSource, page: string): Promise<ToolOutcome> {
+/** Characters one read_docs call returns; the rest is paged by offset. */
+export const READ_DOCS_LIMIT = 20_000;
+
+/** One part of a long page, ending with how to read the next part. */
+function docsPart(page: string, text: string, offset: number): string {
+  if (offset <= 0 && text.length <= READ_DOCS_LIMIT) return text;
+  const start = Math.min(Math.max(0, offset), text.length);
+  const end = Math.min(text.length, start + READ_DOCS_LIMIT);
+  const more = end < text.length
+    ? "\n\n[Characters " + start + "-" + end + " of " + text.length + ". Continue with read_docs " + JSON.stringify({ page, offset: end }) + ".]"
+    : "\n\n[Characters " + start + "-" + end + " of " + text.length + "; end of page.]";
+  return text.slice(start, end) + more;
+}
+
+export async function docsRead(source: DocsSource, page: string, offset = 0): Promise<ToolOutcome> {
   const opMatch = findOperation(source.ops, page);
   const coverage = coverageText(source);
-  if (opMatch) return { text: [...(coverage ? [coverage] : []), referenceText(opMatch)].join("\n\n"), isError: false };
+  if (opMatch) return { text: docsPart(page, [...(coverage ? [coverage] : []), referenceText(opMatch)].join("\n\n"), offset), isError: false };
   const omittedMatch = findOperation(source.omittedOps ?? [], page);
   if (omittedMatch) return omittedPlanLimit([omittedMatch], omittedMatch.tool);
   let target = page;
@@ -1789,7 +1812,7 @@ export async function docsRead(source: DocsSource, page: string): Promise<ToolOu
       ? "A docs URL was not provided at generate time, and no generated operation matches \"" + page + "\"."
       : "Couldn't fetch \"" + page + "\". Use search_docs to find pages.", "NOT_FOUND", ["search_docs finds operations and guide pages."]);
   }
-  return { text: [...(coverage ? [coverage] : []), text].join("\n\n"), isError: false };
+  return { text: docsPart(page, [...(coverage ? [coverage] : []), text].join("\n\n"), offset), isError: false };
 }
 
 /**
@@ -1810,7 +1833,8 @@ export async function callSharedTool(
     return docsSearch(source, args.query, page);
   }
   if (name === "read_docs") {
-    return typeof args.page === "string" ? docsRead(source, args.page) : argumentsError({ tool: name }, [{ code: "MISSING_ARGUMENT", argument: "page", message: "read_docs requires a page string." }]);
+    const offset = typeof args.offset === "number" ? args.offset : typeof args.offset === "string" && /^\d+$/.test(args.offset) ? Number(args.offset) : 0;
+    return typeof args.page === "string" ? docsRead(source, args.page, offset) : argumentsError({ tool: name }, [{ code: "MISSING_ARGUMENT", argument: "page", message: "read_docs requires a page string." }]);
   }
   if (name === "execute") {
     if (typeof args.operation !== "string") return argumentsError({ tool: name }, [{ code: "MISSING_ARGUMENT", argument: "operation", message: "execute requires an operation name." }]);
@@ -1834,4 +1858,9 @@ export async function callSharedTool(
     return runOperation(target, opArgs);
   }
   return undefined;
+}
+
+/** Every OAuth scope an operation's security requirements name, in order. */
+export function requiredScopes(security: Record<string, string[]>[] | undefined): string[] {
+  return [...new Set((security ?? []).flatMap((requirement) => Object.values(requirement).flat()))];
 }

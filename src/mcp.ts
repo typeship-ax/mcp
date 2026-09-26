@@ -27,11 +27,11 @@ import { GLOBALS, OMITTED_OPS, OPS, buildArgs, type OpSpec } from "./ops.js";
 import {
   DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, McpAccountLinkRequired, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
   createStdioRpcHandler, dataOutcome, errorOutcome, handleRpc, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, resolveReferences, serverInstructions,
-  takeCancelled, textError, toolDefinitions, unsupportedAuthOutcome, visibleOps,
+  requiredScopes, takeCancelled, textError, toolDefinitions, unsupportedAuthOutcome, visibleOps,
   type ArgumentIssue, type DocsSource, type McpServer, type OpLike, type RpcOutcome, type ToolOutcome,
 } from "./mcp-protocol.js";
 import { fetchDocsText } from "./docs.js";
-import { assertCredentialDestination, assertStoredIdentity, oauthSessionToken } from "./oauth-session.js";
+import { assertCredentialDestination, assertStoredIdentity, oauthSessionToken, sessionCredential } from "./oauth-session.js";
 import { createCredentialStore } from "./credential-storage.js";
 import { identityPolicyOf, verifyClientIdentity, type IdentityConfiguration } from "./api-identity.js";
 import { parseNamedCredentials, resolveNamedCredentials, namedCredentialAvailability, missingCredentials, oauthSessionSchemes, parseExtraHeaders, applyExtraHeaders, type NamedCredentials, type CredentialSchemes } from "./named-credentials.js";
@@ -236,6 +236,10 @@ async function callOperationRaw(op: OpSpec, rawArgs: Record<string, unknown>, re
     }
   }
   if (fileIssues.length > 0) return argumentsError(op, fileIssues);
+  // A tool result is one value: a streamed response is not available here.
+  if (op.streamMethod && args[op.streamMethod.flag] === op.streamMethod.value) {
+    return argumentsError(op, [{ code: "INVALID_ARGUMENT", argument: op.streamMethod.flag, message: op.streamMethod.flag + ": streaming is not available over MCP, which returns one result per call. Call again without " + op.streamMethod.flag + " " + JSON.stringify(op.streamMethod.value) + " to get the complete response." }]);
+  }
   const callArgs = buildArgs(
     op,
     values,
@@ -246,6 +250,7 @@ async function callOperationRaw(op: OpSpec, rawArgs: Record<string, unknown>, re
     authHint: remote ? AUTH_HINT_HTTP : AUTH_HINT_STDIO,
     docsUrl: docsSource.docsUrl(),
     hadCredential: !!remote || CLIENT_CREDENTIALS.get(client) === true,
+    requiredScopes: requiredScopes(op.security),
   };
   const shape = { fields, maxChars, pagination: op.pagination, args };
   try {
