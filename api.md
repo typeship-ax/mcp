@@ -415,6 +415,16 @@ Input schema:
                     "maxItems": 20,
                     "type": "array"
                   },
+                  "include": {
+                    "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path segment, `**` any number), optionally after an HTTP method (`DELETE /zones/*`). Applied before the Spec size limit, with components nothing references any more removed, so a one-shot run can generate part of a Spec up to 64 MB. Selectors that match nothing are reported as generation warnings.",
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "exclude": {
+                    "description": "Leave out matching operations (tag names or path globs, as for `include`). Wins over `include`.",
+                    "maxItems": 100,
+                    "type": "array"
+                  },
                   "retries": {
                     "description": "Retry behavior. Top-level fields adjust every operation; operations maps operationId or \"METHOD /path\" keys to per-operation overrides.",
                     "type": "object"
@@ -524,6 +534,26 @@ Input schema:
               "description": "Wire names of query/header parameters that become settable once on the generated client and auto-apply to every operation that accepts them; per-call values win. Names that match nothing are reported as generation warnings.",
               "maxItems": 20,
               "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path segment, `**` any number), optionally after an HTTP method (`DELETE /zones/*`). Applied before the Spec size limit, with components nothing references any more removed, so a one-shot run can generate part of a Spec up to 64 MB. Selectors that match nothing are reported as generation warnings.",
+              "maxItems": 100,
+              "items": {
+                "minLength": 1,
+                "maxLength": 500,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`). Wins over `include`.",
+              "maxItems": 100,
+              "items": {
+                "minLength": 1,
+                "maxLength": 500,
                 "type": "string"
               },
               "type": "array"
@@ -993,6 +1023,16 @@ Output schema:
               "maxItems": 20,
               "type": "array"
             },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path se…",
+              "maxItems": 100,
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`).",
+              "maxItems": 100,
+              "type": "array"
+            },
             "retries": {
               "description": "Retry behavior.",
               "type": "object"
@@ -1166,6 +1206,16 @@ Output schema:
                   "globals": {
                     "description": "Wire names of query/header parameters that become settable once on the generated client and auto-apply to every operation that accepts them; per-call values win. Names that match nothing are reported as generation warnings.",
                     "maxItems": 20,
+                    "type": "array"
+                  },
+                  "include": {
+                    "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path segment, `**` any number), optionally after an HTTP method (`DELETE /zones/*`). Applied before the Spec size limit, with components nothing references any more removed, so a one-shot run can generate part of a Spec up to 64 MB. Selectors that match nothing are reported as generation warnings.",
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "exclude": {
+                    "description": "Leave out matching operations (tag names or path globs, as for `include`). Wins over `include`.",
+                    "maxItems": 100,
                     "type": "array"
                   },
                   "retries": {
@@ -1357,6 +1407,16 @@ Output schema:
               "maxItems": 20,
               "type": "array"
             },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path se…",
+              "maxItems": 100,
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`).",
+              "maxItems": 100,
+              "type": "array"
+            },
             "retries": {
               "description": "Retry behavior.",
               "type": "object"
@@ -1486,6 +1546,26 @@ Input schema:
               "description": "Wire names of query/header parameters that become settable once on the generated client and auto-apply to every operation that accepts them; per-call values win. Names that match nothing are reported as generation warnings.",
               "maxItems": 20,
               "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path segment, `**` any number), optionally after an HTTP method (`DELETE /zones/*`). Applied before the Spec size limit, with components nothing references any more removed, so a one-shot run can generate part of a Spec up to 64 MB. Selectors that match nothing are reported as generation warnings.",
+              "maxItems": 100,
+              "items": {
+                "minLength": 1,
+                "maxLength": 500,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`). Wins over `include`.",
+              "maxItems": 100,
+              "items": {
+                "minLength": 1,
+                "maxLength": 500,
                 "type": "string"
               },
               "type": "array"
@@ -1927,6 +2007,16 @@ Output schema:
             "globals": {
               "description": "Wire names of query/header parameters that become settable once on the generated client and auto-ap…",
               "maxItems": 20,
+              "type": "array"
+            },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path se…",
+              "maxItems": 100,
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`).",
+              "maxItems": 100,
               "type": "array"
             },
             "retries": {
@@ -4669,6 +4759,26 @@ Input schema:
               },
               "type": "array"
             },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path segment, `**` any number), optionally after an HTTP method (`DELETE /zones/*`). Applied before the Spec size limit, with components nothing references any more removed, so a one-shot run can generate part of a Spec up to 64 MB. Selectors that match nothing are reported as generation warnings.",
+              "maxItems": 100,
+              "items": {
+                "minLength": 1,
+                "maxLength": 500,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`). Wins over `include`.",
+              "maxItems": 100,
+              "items": {
+                "minLength": 1,
+                "maxLength": 500,
+                "type": "string"
+              },
+              "type": "array"
+            },
             "retries": {
               "description": "Retry behavior. Top-level fields adjust every operation; operations maps operationId or \"METHOD /path\" keys to per-operation overrides.",
               "properties": {
@@ -5267,6 +5377,16 @@ Output schema:
               "maxItems": 20,
               "type": "array"
             },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path se…",
+              "maxItems": 100,
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`).",
+              "maxItems": 100,
+              "type": "array"
+            },
             "retries": {
               "description": "Retry behavior.",
               "type": "object"
@@ -5572,6 +5692,16 @@ Output schema:
                   "globals": {
                     "description": "Wire names of query/header parameters that become settable once on the generated client and auto-ap…",
                     "maxItems": 20,
+                    "type": "array"
+                  },
+                  "include": {
+                    "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path se…",
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "exclude": {
+                    "description": "Leave out matching operations (tag names or path globs, as for `include`).",
+                    "maxItems": 100,
                     "type": "array"
                   },
                   "retries": {
@@ -5885,6 +6015,16 @@ Output schema:
               "maxItems": 20,
               "type": "array"
             },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path se…",
+              "maxItems": 100,
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`).",
+              "maxItems": 100,
+              "type": "array"
+            },
             "retries": {
               "description": "Retry behavior.",
               "type": "object"
@@ -6098,6 +6238,26 @@ Input schema:
               "description": "Wire names of query/header parameters that become settable once on the generated client and auto-apply to every operation that accepts them; per-call values win. Names that match nothing are reported as generation warnings.",
               "maxItems": 20,
               "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path segment, `**` any number), optionally after an HTTP method (`DELETE /zones/*`). Applied before the Spec size limit, with components nothing references any more removed, so a one-shot run can generate part of a Spec up to 64 MB. Selectors that match nothing are reported as generation warnings.",
+              "maxItems": 100,
+              "items": {
+                "minLength": 1,
+                "maxLength": 500,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`). Wins over `include`.",
+              "maxItems": 100,
+              "items": {
+                "minLength": 1,
+                "maxLength": 500,
                 "type": "string"
               },
               "type": "array"
@@ -6578,6 +6738,16 @@ Output schema:
             "globals": {
               "description": "Wire names of query/header parameters that become settable once on the generated client and auto-ap…",
               "maxItems": 20,
+              "type": "array"
+            },
+            "include": {
+              "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path se…",
+              "maxItems": 100,
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Leave out matching operations (tag names or path globs, as for `include`).",
+              "maxItems": 100,
               "type": "array"
             },
             "retries": {
@@ -12849,6 +13019,26 @@ Input schema:
           "description": "Wire names of query/header parameters that become settable once on the generated client and auto-apply to every operation that accepts them; per-call values win. Names that match nothing are reported as generation warnings.",
           "maxItems": 20,
           "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "include": {
+          "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path segment, `**` any number), optionally after an HTTP method (`DELETE /zones/*`). Applied before the Spec size limit, with components nothing references any more removed, so a one-shot run can generate part of a Spec up to 64 MB. Selectors that match nothing are reported as generation warnings.",
+          "maxItems": 100,
+          "items": {
+            "minLength": 1,
+            "maxLength": 500,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "exclude": {
+          "description": "Leave out matching operations (tag names or path globs, as for `include`). Wins over `include`.",
+          "maxItems": 100,
+          "items": {
+            "minLength": 1,
+            "maxLength": 500,
             "type": "string"
           },
           "type": "array"
