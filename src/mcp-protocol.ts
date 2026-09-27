@@ -1587,6 +1587,13 @@ function notFoundNextSteps(message: string, body: unknown): string[] {
  * message, status, the API's body, where to read more, and what to do. */
 export function errorOutcome(error: unknown, context: ErrorContext = {}): ToolOutcome {
   const e = error as { name?: string; message?: string; status?: number; body?: unknown; rateLimit?: { retryAt?: Date }; response?: { requestId?: string } };
+  // A GraphQL response with data and errors is a partial success: the agent
+  // gets the data it can use and the errors that explain what is missing.
+  const partial = error as { name?: string; data?: unknown; errors?: unknown[] } | null;
+  if (partial?.name === "GraphQLRequestError" && partial.data !== undefined && partial.data !== null) {
+    const structured = { data: partial.data, errors: partial.errors ?? [], partial: true };
+    return { text: JSON.stringify(structured), isError: false, structured };
+  }
   const { code, nextSteps } = classifyError(error, context);
   const retryAt = e?.rateLimit?.retryAt instanceof Date ? new Date(Math.ceil(e.rateLimit.retryAt.getTime() / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, "Z") : undefined;
   const bodyRequestId = e?.body && typeof e.body === "object" && !Array.isArray(e.body)
