@@ -243,6 +243,23 @@ Input schema:
                     "type": "string"
                   },
                   "type": "object"
+                },
+                "error_types": {
+                  "description": "Object types that report a failure when an operation's union or interface result resolves to them (errors returned as data). Replaces the default, which is every member whose name ends in Error when the result can also be something else. An empty array treats no result as a failure. Names that are not object types in the schema produce a generation warning.",
+                  "maxItems": 100,
+                  "uniqueItems": true,
+                  "items": {
+                    "pattern": "^[_A-Za-z][_0-9A-Za-z]*$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "page_size": {
+                  "description": "Page size a paginated connection call sends as first when the caller passes neither first nor last. Relay servers such as GitHub reject a connection query without one. Ignored for a connection whose first argument has a schema default.",
+                  "default": 100,
+                  "minimum": 1,
+                  "maximum": 1000,
+                  "type": "integer"
                 }
               },
               "additionalProperties": false,
@@ -2579,7 +2596,7 @@ Output schema:
     },
     "patches": {
       "items": {
-        "description": "A fix applied to the resolved Spec before generation. Paths are JSON\nPointers into the document. A patch whose target no longer exists is\nskipped and reported as a warning on the generation, never silently.",
+        "description": "A fix applied to the resolved Spec before generation.",
         "examples": [
           {
             "op": "remove",
@@ -2597,7 +2614,7 @@ Output schema:
             "type": "string"
           },
           "path": {
-            "description": "JSON-Pointer-style path. Pattern segments enable bulk fixes:\n* (any child), ** (any depth), [key=value] (filter), e.g.\n/paths/**/parameters/[name=account_id]/schema/type. Renaming a\nschema under /components/schemas also rewrites its $refs.",
+            "description": "JSON-Pointer-style path.",
             "type": "string"
           },
           "value": {
@@ -2624,15 +2641,15 @@ Output schema:
     "graphql": {
       "anyOf": [
         {
-          "description": "What a GraphQL schema cannot say about itself. Ignored for OpenAPI specs.",
+          "description": "What a GraphQL schema cannot say about itself.",
           "properties": {
             "endpoint": {
               "format": "uri",
-              "description": "The URL every request is POSTed to; the generated client's default baseUrl. Defaults to the URL the schema was fetched from. Without either, baseUrl is a required client option.",
+              "description": "The URL every request is POSTed to; the generated client's default baseUrl.",
               "type": "string"
             },
             "environments": {
-              "description": "Named endpoints (sandbox, production). Each becomes a client environment; the first is the default unless endpoint is set.",
+              "description": "Named endpoints (sandbox, production).",
               "maxItems": 10,
               "items": {
                 "type": "object"
@@ -2648,21 +2665,21 @@ Output schema:
                 "api_key_or_bearer",
                 "none"
               ],
-              "description": "How requests authenticate. bearer sends Authorization: Bearer; basic is for key-pair APIs (public key as username, private key as password); basic_api_key sends one API key as the Basic-auth username with an empty password; api_key sends a header named by api_key_header; api_key_or_bearer sends a key in api_key_header (Authorization for a raw key) and also accepts an OAuth access token as Authorization: Bearer; none generates no auth option.",
+              "description": "How requests authenticate.",
               "default": "bearer",
               "type": "string"
             },
             "api_key_header": {
-              "description": "Header carrying the key when auth is api_key or api_key_or_bearer. Required for those modes; Typeship does not invent a vendor-specific header name.",
+              "description": "Header carrying the key when auth is api_key or api_key_or_bearer.",
               "type": "string"
             },
             "title": {
-              "description": "The API's name; drives the package and client names (\"Acme\" gives acme and AcmeClient). Defaults to a name derived from the endpoint's host.",
+              "description": "The API's name; drives the package and client names (\"Acme\" gives acme and AcmeClient).",
               "maxLength": 80,
               "type": "string"
             },
             "scalars": {
-              "description": "JSON representation of each custom scalar, keyed by GraphQL scalar name. Unmapped scalars generate as the language's untyped JSON value and produce a warning. Unmatched keys warn.",
+              "description": "JSON representation of each custom scalar, keyed by GraphQL scalar name.",
               "additionalProperties": {
                 "enum": [
                   "string",
@@ -2674,6 +2691,23 @@ Output schema:
                 "type": "string"
               },
               "type": "object"
+            },
+            "error_types": {
+              "description": "Object types that report a failure when an operation's union or interface result resolves to them (…",
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": {
+                "pattern": "^[_A-Za-z][_0-9A-Za-z]*$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "page_size": {
+              "description": "Page size a paginated connection call sends as first when the caller passes neither first nor last.",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 1000,
+              "type": "integer"
             }
           },
           "type": "object"
@@ -2684,7 +2718,7 @@ Output schema:
       ]
     },
     "diagnostic_policy": {
-      "description": "Source pull-request enforcement threshold, new-versus-complete baseline, and explicitly reviewed rule or location exceptions.",
+      "description": "Source pull-request enforcement threshold, new-versus-complete baseline, and explicitly reviewed ru…",
       "properties": {
         "fail_on": {
           "enum": [
@@ -2711,7 +2745,7 @@ Output schema:
                 "type": "string"
               },
               "path": {
-                "description": "Exact schema coordinate. Omit only to suppress every occurrence of the rule.",
+                "description": "Exact schema coordinate.",
                 "maxLength": 4096,
                 "type": "string"
               },
@@ -3024,6 +3058,23 @@ Input schema:
                 "type": "string"
               },
               "type": "object"
+            },
+            "error_types": {
+              "description": "Object types that report a failure when an operation's union or interface result resolves to them (errors returned as data). Replaces the default, which is every member whose name ends in Error when the result can also be something else. An empty array treats no result as a failure. Names that are not object types in the schema produce a generation warning.",
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": {
+                "pattern": "^[_A-Za-z][_0-9A-Za-z]*$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "page_size": {
+              "description": "Page size a paginated connection call sends as first when the caller passes neither first nor last. Relay servers such as GitHub reject a connection query without one. Ignored for a connection whose first argument has a schema default.",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 1000,
+              "type": "integer"
             }
           },
           "additionalProperties": false,
@@ -3229,7 +3280,7 @@ Output schema:
     },
     "patches": {
       "items": {
-        "description": "A fix applied to the resolved Spec before generation. Paths are JSON\nPointers into the document. A patch whose target no longer exists is\nskipped and reported as a warning on the generation, never silently.",
+        "description": "A fix applied to the resolved Spec before generation.",
         "examples": [
           {
             "op": "remove",
@@ -3247,7 +3298,7 @@ Output schema:
             "type": "string"
           },
           "path": {
-            "description": "JSON-Pointer-style path. Pattern segments enable bulk fixes:\n* (any child), ** (any depth), [key=value] (filter), e.g.\n/paths/**/parameters/[name=account_id]/schema/type. Renaming a\nschema under /components/schemas also rewrites its $refs.",
+            "description": "JSON-Pointer-style path.",
             "type": "string"
           },
           "value": {
@@ -3274,15 +3325,15 @@ Output schema:
     "graphql": {
       "anyOf": [
         {
-          "description": "What a GraphQL schema cannot say about itself. Ignored for OpenAPI specs.",
+          "description": "What a GraphQL schema cannot say about itself.",
           "properties": {
             "endpoint": {
               "format": "uri",
-              "description": "The URL every request is POSTed to; the generated client's default baseUrl. Defaults to the URL the schema was fetched from. Without either, baseUrl is a required client option.",
+              "description": "The URL every request is POSTed to; the generated client's default baseUrl.",
               "type": "string"
             },
             "environments": {
-              "description": "Named endpoints (sandbox, production). Each becomes a client environment; the first is the default unless endpoint is set.",
+              "description": "Named endpoints (sandbox, production).",
               "maxItems": 10,
               "items": {
                 "type": "object"
@@ -3298,21 +3349,21 @@ Output schema:
                 "api_key_or_bearer",
                 "none"
               ],
-              "description": "How requests authenticate. bearer sends Authorization: Bearer; basic is for key-pair APIs (public key as username, private key as password); basic_api_key sends one API key as the Basic-auth username with an empty password; api_key sends a header named by api_key_header; api_key_or_bearer sends a key in api_key_header (Authorization for a raw key) and also accepts an OAuth access token as Authorization: Bearer; none generates no auth option.",
+              "description": "How requests authenticate.",
               "default": "bearer",
               "type": "string"
             },
             "api_key_header": {
-              "description": "Header carrying the key when auth is api_key or api_key_or_bearer. Required for those modes; Typeship does not invent a vendor-specific header name.",
+              "description": "Header carrying the key when auth is api_key or api_key_or_bearer.",
               "type": "string"
             },
             "title": {
-              "description": "The API's name; drives the package and client names (\"Acme\" gives acme and AcmeClient). Defaults to a name derived from the endpoint's host.",
+              "description": "The API's name; drives the package and client names (\"Acme\" gives acme and AcmeClient).",
               "maxLength": 80,
               "type": "string"
             },
             "scalars": {
-              "description": "JSON representation of each custom scalar, keyed by GraphQL scalar name. Unmapped scalars generate as the language's untyped JSON value and produce a warning. Unmatched keys warn.",
+              "description": "JSON representation of each custom scalar, keyed by GraphQL scalar name.",
               "additionalProperties": {
                 "enum": [
                   "string",
@@ -3324,6 +3375,23 @@ Output schema:
                 "type": "string"
               },
               "type": "object"
+            },
+            "error_types": {
+              "description": "Object types that report a failure when an operation's union or interface result resolves to them (…",
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": {
+                "pattern": "^[_A-Za-z][_0-9A-Za-z]*$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "page_size": {
+              "description": "Page size a paginated connection call sends as first when the caller passes neither first nor last.",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 1000,
+              "type": "integer"
             }
           },
           "type": "object"
@@ -3334,7 +3402,7 @@ Output schema:
       ]
     },
     "diagnostic_policy": {
-      "description": "Source pull-request enforcement threshold, new-versus-complete baseline, and explicitly reviewed rule or location exceptions.",
+      "description": "Source pull-request enforcement threshold, new-versus-complete baseline, and explicitly reviewed ru…",
       "properties": {
         "fail_on": {
           "enum": [
@@ -3361,7 +3429,7 @@ Output schema:
                 "type": "string"
               },
               "path": {
-                "description": "Exact schema coordinate. Omit only to suppress every occurrence of the rule.",
+                "description": "Exact schema coordinate.",
                 "maxLength": 4096,
                 "type": "string"
               },
@@ -3578,7 +3646,7 @@ Output schema:
     },
     "patches": {
       "items": {
-        "description": "A fix applied to the resolved Spec before generation. Paths are JSON\nPointers into the document. A patch whose target no longer exists is\nskipped and reported as a warning on the generation, never silently.",
+        "description": "A fix applied to the resolved Spec before generation.",
         "examples": [
           {
             "op": "remove",
@@ -3596,7 +3664,7 @@ Output schema:
             "type": "string"
           },
           "path": {
-            "description": "JSON-Pointer-style path. Pattern segments enable bulk fixes:\n* (any child), ** (any depth), [key=value] (filter), e.g.\n/paths/**/parameters/[name=account_id]/schema/type. Renaming a\nschema under /components/schemas also rewrites its $refs.",
+            "description": "JSON-Pointer-style path.",
             "type": "string"
           },
           "value": {
@@ -3623,15 +3691,15 @@ Output schema:
     "graphql": {
       "anyOf": [
         {
-          "description": "What a GraphQL schema cannot say about itself. Ignored for OpenAPI specs.",
+          "description": "What a GraphQL schema cannot say about itself.",
           "properties": {
             "endpoint": {
               "format": "uri",
-              "description": "The URL every request is POSTed to; the generated client's default baseUrl. Defaults to the URL the schema was fetched from. Without either, baseUrl is a required client option.",
+              "description": "The URL every request is POSTed to; the generated client's default baseUrl.",
               "type": "string"
             },
             "environments": {
-              "description": "Named endpoints (sandbox, production). Each becomes a client environment; the first is the default unless endpoint is set.",
+              "description": "Named endpoints (sandbox, production).",
               "maxItems": 10,
               "items": {
                 "type": "object"
@@ -3647,21 +3715,21 @@ Output schema:
                 "api_key_or_bearer",
                 "none"
               ],
-              "description": "How requests authenticate. bearer sends Authorization: Bearer; basic is for key-pair APIs (public key as username, private key as password); basic_api_key sends one API key as the Basic-auth username with an empty password; api_key sends a header named by api_key_header; api_key_or_bearer sends a key in api_key_header (Authorization for a raw key) and also accepts an OAuth access token as Authorization: Bearer; none generates no auth option.",
+              "description": "How requests authenticate.",
               "default": "bearer",
               "type": "string"
             },
             "api_key_header": {
-              "description": "Header carrying the key when auth is api_key or api_key_or_bearer. Required for those modes; Typeship does not invent a vendor-specific header name.",
+              "description": "Header carrying the key when auth is api_key or api_key_or_bearer.",
               "type": "string"
             },
             "title": {
-              "description": "The API's name; drives the package and client names (\"Acme\" gives acme and AcmeClient). Defaults to a name derived from the endpoint's host.",
+              "description": "The API's name; drives the package and client names (\"Acme\" gives acme and AcmeClient).",
               "maxLength": 80,
               "type": "string"
             },
             "scalars": {
-              "description": "JSON representation of each custom scalar, keyed by GraphQL scalar name. Unmapped scalars generate as the language's untyped JSON value and produce a warning. Unmatched keys warn.",
+              "description": "JSON representation of each custom scalar, keyed by GraphQL scalar name.",
               "additionalProperties": {
                 "enum": [
                   "string",
@@ -3673,6 +3741,23 @@ Output schema:
                 "type": "string"
               },
               "type": "object"
+            },
+            "error_types": {
+              "description": "Object types that report a failure when an operation's union or interface result resolves to them (…",
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": {
+                "pattern": "^[_A-Za-z][_0-9A-Za-z]*$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "page_size": {
+              "description": "Page size a paginated connection call sends as first when the caller passes neither first nor last.",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 1000,
+              "type": "integer"
             }
           },
           "type": "object"
@@ -3683,7 +3768,7 @@ Output schema:
       ]
     },
     "diagnostic_policy": {
-      "description": "Source pull-request enforcement threshold, new-versus-complete baseline, and explicitly reviewed rule or location exceptions.",
+      "description": "Source pull-request enforcement threshold, new-versus-complete baseline, and explicitly reviewed ru…",
       "properties": {
         "fail_on": {
           "enum": [
@@ -3710,7 +3795,7 @@ Output schema:
                 "type": "string"
               },
               "path": {
-                "description": "Exact schema coordinate. Omit only to suppress every occurrence of the rule.",
+                "description": "Exact schema coordinate.",
                 "maxLength": 4096,
                 "type": "string"
               },
@@ -13206,6 +13291,23 @@ Input schema:
                 "type": "string"
               },
               "type": "object"
+            },
+            "error_types": {
+              "description": "Object types that report a failure when an operation's union or interface result resolves to them (errors returned as data). Replaces the default, which is every member whose name ends in Error when the result can also be something else. An empty array treats no result as a failure. Names that are not object types in the schema produce a generation warning.",
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": {
+                "pattern": "^[_A-Za-z][_0-9A-Za-z]*$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "page_size": {
+              "description": "Page size a paginated connection call sends as first when the caller passes neither first nor last. Relay servers such as GitHub reject a connection query without one. Ignored for a connection whose first argument has a schema default.",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 1000,
+              "type": "integer"
             }
           },
           "additionalProperties": false,
