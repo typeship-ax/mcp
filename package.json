@@ -1,7 +1,7 @@
 {
   "name": "@typeship-ax/mcp",
-  "version": "0.21.0",
-  "description": "MCP server for typeship.",
+  "version": "0.22.0",
+  "description": "MCP server for Typeship.",
   "keywords": [
     "typeship",
     "api",
@@ -15,6 +15,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/typeship-ax/mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/typeship-ax/mcp/issues"
   },
   "license": "MIT",
   "mcpName": "dev.typeship/typeship",
