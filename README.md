@@ -1,44 +1,22 @@
 # @typeship-ax/mcp
 
-MCP server for typeship. [API reference](./api.md)
+MCP server for the typeship API. [API reference](./api.md)
 
-Generated from the OpenAPI spec by [typeship](https://typeship.dev).
+Resolve an OpenAPI or GraphQL Spec, diagnose it, and keep every selected CLI, MCP, and SDK Target current.
 
-- **Zero runtime dependencies** — built on the platform `fetch` in Node 20+
-- **Agent-ready MCP** — schema-derived tools, argument validation, read-only mode, and bounded results
+## Installation
 
-## Build from source
-
-Run these commands in the downloaded or cloned package directory:
-
-```sh
-npm install
-npm run build
-```
-
-Requires Node.js 20+. The package is ESM.
-
-To run the local MCP server, configure your MCP client with `node` and the absolute path to `dist/mcp.js`, as shown below. The server communicates over stdio.
-
-## Install a published package
-
-Generation does not publish a package. Before using the registry command below, confirm `name` and `version` in `package.json`, publish under a name you control, and verify that release is available on npm.
+MCP clients start the server with `npx`, so it needs no separate installation (see [Connect an MCP client](#connect-an-mcp-client)). To install the `typeship-mcp` command globally instead:
 
 ```sh
 npm install --global @typeship-ax/mcp@0.22.0
 ```
 
-## MCP client requirements
+Requires Node.js 20+.
 
-Connect with your client's default settings. This server supports MCP `2025-11-25` and `2026-07-28` automatically; no protocol environment variables are required. After registering it, run `claude mcp list` to verify a Claude Code connection.
+## Connect an MCP client
 
-## Connect after publishing
-
-The npm connections below require `@typeship-ax/mcp` to be published under your package identity. To use downloaded source before publishing, use the local configuration in the next section. Hosted connections require a deployed server.
-
-Authentication: provide `TYPESHIP_API_KEY` through the MCP client's environment or secret settings. Keep credential values out of URLs and command arguments.
-
-For Cursor, merge a local or remote server entry from this README into `mcpServers` in `.cursor/mcp.json`, then enable the server in Cursor’s MCP settings.
+Provide `TYPESHIP_API_KEY` through the MCP client's environment or secret settings. Keep credential values out of URLs and command arguments.
 
 ### Local
 
@@ -64,17 +42,20 @@ For Cursor, merge a local or remote server entry from this README into `mcpServe
 - Codex: `codex mcp add typeship-readonly --url https://typeship.dev/mcp/readonly`
 - [Install in VS Code](vscode:mcp/install?%7B%22name%22%3A%22typeship-readonly%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ftypeship.dev%2Fmcp%2Freadonly%22%7D)
 
-## MCP server
+### Other clients
 
-A zero-dependency stdio server exposing a compact discovery surface: `search_docs`, `read_docs`, and `execute`. Read an operation before executing it to get its complete schema, example arguments, and safety classification. After building, add the local server to an MCP client:
+Add a server entry to your client's MCP configuration. For Cursor, merge it into `mcpServers` in `.cursor/mcp.json`, then enable the server in Cursor's MCP settings:
 
 ```json
 {
   "mcpServers": {
     "typeship": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "/absolute/path/to/package/dist/mcp.js"
+        "-y",
+        "--package",
+        "@typeship-ax/mcp",
+        "typeship-mcp"
       ],
       "env": {
         "TYPESHIP_API_KEY": "replace-with-your-credential"
@@ -84,28 +65,16 @@ A zero-dependency stdio server exposing a compact discovery surface: `search_doc
 }
 ```
 
-Replace the path with the absolute path to this package's built `dist/mcp.js`.
+Replace the credential placeholder using the MCP client's secret storage when it has one. The server reads `TYPESHIP_API_KEY` from its environment; credentials never belong in command arguments.
 
-For Claude Code, you can register the local build from the shell configured above:
+The server supports MCP `2025-11-25` and `2026-07-28` and picks the version automatically, so clients need no protocol settings. After registering it with Claude Code, `claude mcp list` shows the connection.
 
-```sh
-claude mcp add --transport stdio typeship -- node /absolute/path/to/package/dist/mcp.js
-claude mcp list
-```
+## Tools
 
-Replace the credential placeholder using the MCP client's secret storage when it has one. The local server reads `TYPESHIP_API_KEY` from its environment; credentials never belong in command arguments. If you also generated the CLI, its `typeship login` command stores credentials the local MCP server can reuse.
+The server runs over stdio with no runtime dependencies and exposes a compact discovery surface: `search_docs`, `read_docs`, and `execute`. Read an operation before executing it to get its arguments, an example, and its safety classification.
 
-Tool input schemas are derived from the OpenAPI spec, so agents see real parameter types and required fields. Arguments are checked before anything reaches the API (unknown or mistyped ones come back as one `isError` result, nothing is dropped), every tool takes `fields` to keep only the result keys it needs, and errors carry a stable `code` and `next_steps`.
+Tool input schemas come from the OpenAPI spec, so agents see real parameter types and required fields. Arguments are checked before anything reaches the API (unknown or mistyped ones come back as one `isError` result, nothing is dropped), every tool takes `fields` to keep only the result keys it needs, and errors carry a stable `code` and `next_steps`.
 
 Add `--read-only` to `args` (or set `TYPESHIP_MCP_READ_ONLY=1`) for a server that cannot write, `--tools projects,specs` (or `TYPESHIP_MCP_TOOLS`) to expose a subset, and `TYPESHIP_MCP_MAX_RESULT_CHARS` to change the result size cap (64,000).
 
-## MCP Registry
-
-`server.json` describes the npm executable and any hosted transports. Its `dev.typeship/typeship` identity matches `package.json#mcpName`.
-
-Install the official `mcp-publisher`, publish this npm package first, then validate or publish the listing:
-
-```bash
-npm run mcp:validate
-npm run mcp:publish
-```
+Generated from the OpenAPI spec by [typeship](https://typeship.dev).
