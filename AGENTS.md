@@ -1,6 +1,6 @@
-# typeship — agent context
+# Typeship: agent guide
 
-This package contains the generated MCP server for **typeship** (API v1.0.0, package v0.21.0).
+Instructions for coding agents that call the Typeship API through this MCP server (API version 1.0.0, package version 0.22.0).
 
 Resolve an OpenAPI or GraphQL Spec, diagnose it, and keep every
 selected CLI, MCP, and SDK Target current.
@@ -16,21 +16,25 @@ Examples use Parcel, a fictional delivery service. Replace its domains,
 repository names, and resource identifiers with your own. The hosted
 petstore Spec is a runnable sample.
 
-## Ground rules
-- Maintaining this package: when its repository receives reviewed regeneration pull requests, committed customizations are preserved and edits that overlap a generated change stop for review. Regenerating into a directory replaces its files.
-- A custom file ships only when the package manifest, exports, build, and tests include it. Add a package check for every custom build or test step.
+## Before writing code
+- `api.md` is the tool and schema reference; `api.json` is the machine-readable contract: every operation's inputs, outputs, errors, `safety` (`read`, `write`, or `destructive`), and an example. Look up exact names there instead of guessing.
+- `README.md` covers installation and setup.
 - Zero runtime dependencies; the program runs on Node.js 20+ and platform `fetch`.
-- `api.md` is the tool and schema reference; `api.json` is the machine-readable operation, schema, safety, and example contract. Read them before guessing.
-- Start with the local build or installation instructions in `README.md`. Generation does not publish a registry package.
 
 ## Authentication
 - Bearer token: set the `TYPESHIP_TOKEN` environment variable.
 
 ## MCP server
-- Use the README's MCP connection instructions. MCP `2025-11-25` and `2026-07-28` are selected automatically; no client protocol flags are required.
-- Build the package and configure your MCP client to run `node` with the absolute path to `dist/mcp.js`. After publishing, you can use `npx -y --package @typeship-ax/mcp typeship-mcp`. Set the package's auth environment variables in that client; `--read-only` prevents write tools.
-- This package exposes the compact `search_docs`, `read_docs`, and `execute` surface. Find an operation, read its complete contract, then call `execute` with its name and `arguments`; destructive operations return `CONFIRMATION_REQUIRED` until repeated with `confirm: true`. Operation names are not directly callable tools in this mode.
+- `README.md` shows how to connect an MCP client. The server supports MCP `2025-11-25` and `2026-07-28` and picks the version automatically; clients need no protocol flags.
+- Clients start the server with `npx -y --package @typeship-ax/mcp typeship-mcp`. Set the auth environment variables in the client's configuration; `--read-only` removes write tools.
+- This package exposes the compact `search_docs`, `read_docs`, and `execute` surface. Find an operation, read its arguments and example with `read_docs`, then call `execute` with its name and `arguments`; destructive operations return `CONFIRMATION_REQUIRED` until repeated with `confirm: true`. Operation names are not directly callable tools in this mode.
 - Tool arguments are checked against the schema before any request (unknown or mistyped arguments are one `isError` result with per-argument issues); pass `fields` (dotted paths) to keep only the result keys you need; errors carry `code` and `next_steps`.
+
+## Safety
+- Read credentials from the environment or a secret store. Never hard-code them, print them, or put them in URLs or command arguments.
+- Check an operation's `safety` in `api.json` before calling it. Confirm with the user before running a `write` or `destructive` operation they did not ask for.
+- For exploration or reporting, run the MCP server with `--read-only` so no tool can write.
+- Keep results small: select only the fields you need with `fields` (MCP).
 
 ## Documentation
 - The reference for this exact package: `api.md` (offline, always current with the code).

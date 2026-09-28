@@ -1,14 +1,14 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "dev.typeship/typeship",
-  "title": "typeship",
-  "description": "MCP server for typeship.",
+  "title": "Typeship",
+  "description": "MCP server for Typeship.",
   "websiteUrl": "https://typeship.dev",
   "repository": {
     "url": "https://github.com/typeship-ax/mcp",
     "source": "github"
   },
-  "version": "0.21.0",
+  "version": "0.22.0",
   "remotes": [
     {
       "type": "streamable-http",
@@ -24,7 +24,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@typeship-ax/mcp",
-      "version": "0.21.0",
+      "version": "0.22.0",
       "transport": {
         "type": "stdio"
       },
@@ -32,7 +32,7 @@
       "environmentVariables": [
         {
           "name": "TYPESHIP_TOKEN",
-          "description": "Credential used by typeship.",
+          "description": "Typeship token, sent as Authorization: Bearer.",
           "isRequired": false,
           "isSecret": true
         }
