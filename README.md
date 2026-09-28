@@ -1,6 +1,6 @@
 # @typeship-ax/mcp
 
-MCP server for the typeship API. [API reference](./api.md)
+MCP server for the Typeship API. [API reference](./api.md)
 
 Resolve an OpenAPI or GraphQL Spec, diagnose it, and keep every selected CLI, MCP, and SDK Target current.
 
