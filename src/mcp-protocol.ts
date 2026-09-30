@@ -16,10 +16,11 @@
  * Spec: https://modelcontextprotocol.io/specification/2026-07-28
  */
 
-import { checkValue, closestName, isMeReference, normalizeName, userShapedReference, type ArgumentIssue } from "./arguments.js";
+import { checkValue, closestName, isMeReference, meIdentityField, normalizeName, userShapedReference, type ArgumentIssue } from "./arguments.js";
 import { docsReadTarget, resolveDocsContentUrl, searchConnectedGuides } from "./docs.js";
 import { projectFields, unmatchedFields, unmatchedFieldsMessage } from "./fields.js";
 import { SEARCH_PAGE_SIZE, rankOperations } from "./search.js";
+import { argumentPathText, findInputType, inputTypeText, namedTypesIn, type InputTypes } from "./type-docs.js";
 
 export { projectFields } from "./fields.js";
 
@@ -589,8 +590,8 @@ export const SEARCH_DOCS_TOOL: ToolDefinition = {
 
 export const READ_DOCS_TOOL: ToolDefinition = {
   name: "read_docs",
-  description: 'Read a documentation page: an operation reference (a tool name, or dotted "resource.method") or a docs-site guide page by name or URL. Long pages come in parts; pass the offset a part ends with to continue.',
-  inputSchema: { type: "object", properties: { page: { type: "string" }, schema: { type: "boolean", description: "Also return the operation's complete input and output JSON Schemas, default false" }, offset: { type: "integer", minimum: 0, description: "Character offset to continue a long page from, default 0" } }, required: ["page"] },
+  description: 'Read a documentation page: an operation reference (a tool name, or dotted "resource.method"), a named input type such as a filter, or a docs-site guide page by name or URL. Long pages come in parts; pass the offset a part ends with to continue.',
+  inputSchema: { type: "object", properties: { page: { type: "string" }, path: { type: "string", description: "A dotted argument path within the operation or type, e.g. \"filter.team.key\": that field's type, with its named type's fields or values" }, schema: { type: "boolean", description: "Also return the operation's complete input and output JSON Schemas, default false" }, offset: { type: "integer", minimum: 0, description: "Character offset to continue a long page from, default 0" } }, required: ["page"] },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
 
@@ -709,7 +710,7 @@ export function toolDefinitions(ops: OpLike[], mode: "operations" | "meta", omit
       : "";
     return [
       { ...SEARCH_DOCS_TOOL, description: "Search this API's " + ops.length + " generated operations and, when a docs site is configured, its guides. Start here to find the operation you need." + coverage },
-      { ...READ_DOCS_TOOL, description: "Read an operation's reference (arguments, authentication, safety, an example and the result's shape) by tool name, or a docs-site guide page. schema: true adds the complete JSON Schemas." },
+      { ...READ_DOCS_TOOL, description: "Read an operation's reference (arguments, authentication, safety, an example and the result's shape) by tool name, a named input type, or a docs-site guide page. path narrows to one nested argument, e.g. \"filter.team.key\"; schema: true adds the complete JSON Schemas." },
       execute,
     ];
   }
@@ -729,6 +730,55 @@ export function missingArguments(op: OpLike, args: Record<string, unknown>): str
 }
 
 // ---- server instructions ----------------------------------------------------------
+
+/** Identity fields that name the caller for a login-shaped "me" (GitHub's
+ * users_get_authenticated returns login). */
+const IDENTITY_LOGIN_FIELDS = ["login", "username", "handle"];
+
+const MAX_ME_SCHEMA_DEPTH = 6;
+
+function acceptsString(schema: unknown): boolean {
+  if (!schema || typeof schema !== "object") return false;
+  const record = schema as Record<string, unknown>;
+  const type = record.type;
+  if (type === "string" || (Array.isArray(type) && type.includes("string"))) return true;
+  const variants = record.anyOf ?? record.oneOf;
+  return Array.isArray(variants) && variants.some(acceptsString);
+}
+
+function objectVariants(schema: unknown): Record<string, unknown>[] {
+  if (!schema || typeof schema !== "object") return [];
+  const record = schema as Record<string, unknown>;
+  const variants = record.anyOf ?? record.oneOf;
+  return [record, ...(Array.isArray(variants) ? variants.flatMap(objectVariants) : [])]
+    .filter((candidate) => candidate.properties && typeof candidate.properties === "object");
+}
+
+/** Every argument path where the server resolves "me": a user-shaped string
+ * (or a list or union that takes one) at the top level or inside an object
+ * argument. The instructions name exactly these. */
+export function meReferenceArguments(ops: OpLike[]): string[] {
+  const found = new Set<string>();
+  const visit = (name: string, schema: unknown, path: string, depth: number): void => {
+    if (!schema || typeof schema !== "object" || depth > MAX_ME_SCHEMA_DEPTH) return;
+    const record = schema as Record<string, unknown>;
+    const items = record.items ?? (Array.isArray(record.anyOf ?? record.oneOf) ? ((record.anyOf ?? record.oneOf) as Record<string, unknown>[]).find((variant) => variant && variant.items)?.items : undefined);
+    if (userShapedReference(name) && (acceptsString(record) || acceptsString(items))) found.add(path);
+    const nested: [Record<string, unknown>[], string][] = [[objectVariants(record), path], [objectVariants(items), path + "[]"]];
+    for (const [variants, prefix] of nested) {
+      for (const variant of variants) {
+        for (const [key, child] of Object.entries(variant.properties as Record<string, unknown>)) visit(key, child, prefix + "." + key, depth + 1);
+      }
+    }
+  };
+  for (const op of ops) {
+    const properties = (op.inputSchema.properties ?? {}) as Record<string, unknown>;
+    for (const param of op.params) {
+      if (param.resolve !== false) visit(param.name, properties[param.name], param.name, 0);
+    }
+  }
+  return [...found].sort((a, b) => a.split(".").length - b.split(".").length || a.localeCompare(b));
+}
 
 export interface InstructionsInput {
   title: string;
@@ -770,8 +820,9 @@ export function serverInstructions(input: InstructionsInput): string {
   }
   parts.push("Arguments use the API's wire names; an unknown, mistyped or missing argument returns an isError result listing each problem (nothing is dropped silently), and obvious forms are coerced (\"true\" to boolean, \"3\" to number, enum case).");
   if (input.referenceResolution) parts.push("Reference arguments marked in their schema accept either an ID or an exact case-insensitive name, slug, key or email; the server resolves one match through the named list tool, reports multiple candidates, and never guesses fuzzily.");
-  if (input.identityTool && input.ops.some((op) => op.params.some((param) => param.type === "string" && param.resolve !== false && userShapedReference(param.name)))) {
-    parts.push("User-shaped reference arguments also accept \"me\", resolved through " + input.identityTool + ".");
+  const meArguments = input.identityTool ? meReferenceArguments(input.ops) : [];
+  if (meArguments.length > 0) {
+    parts.push("These arguments also accept \"me\" for the caller, resolved through " + input.identityTool + " (ID arguments take its id, others its login when it has one): " + meArguments.join(", ") + ".");
   }
   parts.push("Paginated tools return items, hasMore and nextPage (the exact arguments for the following page). Pass fields (dotted paths) to keep only the result keys you need; oversized results are cut to whole items or keys with a truncated note saying how to ask for less.");
   parts.push("Errors carry error, code, message, status, the API's body and next_steps.");
@@ -876,7 +927,7 @@ export function prepareCall(
     // Patterns apply inside objects and arrays. A top-level argument's own
     // pattern is left to the API: its documented example values do not all
     // satisfy it yet, and a name or "me" is only resolved to an ID later.
-    args[name] = checkValue(value, propSchema, name, issues, { skipPattern: true });
+    args[name] = checkValue(value, propSchema, name, issues, { skipPattern: true, meName: name });
   }
 
   // A path argument that is the configured credential's username (Twilio's
@@ -1008,27 +1059,36 @@ export async function resolveReferences(
   const args = { ...preparedArgs };
   const maxPages = Math.max(1, Math.floor(options.maxPages ?? 5));
   const identity = options.identityTool ? findOperation(options.ops, options.identityTool) : undefined;
-  /** The caller's ID for "me", fetched once per cache. */
-  const callerId = async (argument: string): Promise<{ id: string | number } | { outcome: ToolOutcome }> => {
-    const cacheKey = "me:" + identity!.tool;
+  let identityBody: Record<string, unknown> | undefined;
+  /** The caller's ID, or login for a login-shaped name (GitHub's owner and
+   * assignees), for "me": one identity call per cache. */
+  const callerId = async (argument: string, key: string): Promise<{ id: string | number } | { outcome: ToolOutcome }> => {
+    const field = meIdentityField(key);
+    const cacheKey = "me:" + identity!.tool + (field === "id" ? "" : ":" + field);
     const cached = options.cache.get(cacheKey);
     if (cached !== undefined) return { id: cached };
-    const outcome = await options.runOperation(identity!, {});
-    if (outcome.isError) return { outcome };
-    const body = outcomeValue(outcome);
-    const id = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).id : undefined;
+    if (!identityBody) {
+      const outcome = await options.runOperation(identity!, {});
+      if (outcome.isError) return { outcome };
+      const body = outcomeValue(outcome);
+      identityBody = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+    }
+    const login = IDENTITY_LOGIN_FIELDS.map((name) => identityBody![name]).find((value) => typeof value === "string" && value !== "");
+    const id = field === "login" && login !== undefined ? login : identityBody.id;
     if (typeof id !== "string" && typeof id !== "number") {
-      return { outcome: referenceError("NOT_AVAILABLE", `${identity!.tool} did not return a top-level id, so "me" cannot be resolved for ${argument}.`, argument, ["Pass the caller's exact ID instead."]) };
+      const expected = field === "id" ? "a top-level id" : "a top-level " + IDENTITY_LOGIN_FIELDS.join(", ") + " or id";
+      return { outcome: referenceError("NOT_AVAILABLE", `${identity!.tool} did not return ${expected}, so "me" cannot be resolved for ${argument}.`, argument, [field === "id" ? "Pass the caller's exact ID instead." : "Pass the caller's exact login instead."]) };
     }
     putReferenceCache(options.cache, cacheKey, id);
     return { id };
   };
-  /** "me" inside an object argument (a GraphQL input's assigneeId, or each
-   * of its subscriberIds): the same resolution, keyed by property name. */
+  /** "me" inside an object or array argument (a GraphQL input's assigneeId,
+   * each of its subscriberIds, each of GitHub's assignees): the same
+   * resolution, keyed by property name. */
   const resolveNestedMe = async (value: unknown, key: string, path: string): Promise<{ value: unknown } | { outcome: ToolOutcome }> => {
     if (typeof value === "string") {
       if (!isMeReference(key, value)) return { value };
-      const caller = await callerId(path);
+      const caller = await callerId(path, key);
       return "outcome" in caller ? caller : { value: caller.id };
     }
     if (Array.isArray(value)) {
@@ -1063,7 +1123,7 @@ export async function resolveReferences(
     const value = raw.trim();
 
     if (identity && isMeReference(param.name, value)) {
-      const caller = await callerId(param.name);
+      const caller = await callerId(param.name, param.name);
       if ("outcome" in caller) return { ok: false, outcome: caller.outcome };
       args[param.name] = caller.id;
       continue;
@@ -1161,6 +1221,10 @@ export interface ResultOptions {
   /** Paths the result may lack, such as a server's default projection:
    * they are left out rather than reported. */
   optionalFields?: string[];
+  /** The tool's outputSchema. A fields path it declares may be absent from
+   * the result (an optional key) without being reported; a page checks its
+   * items against the schema's items. */
+  outputSchema?: Record<string, unknown>;
   /** Arguments nextPage must repeat from args (required path parameters
    * such as owner and repo; fields is repeated too): the next-page
    * parameters alone, a page_url for instance, would fail validation when
@@ -1169,29 +1233,50 @@ export interface ResultOptions {
 }
 
 /** A fields path that selects nothing is an error that names the keys
- * that exist, not a silent {}. The API call already happened, so the error
- * says so, and a write's unprojected result comes back with it. */
-function unmatchedFieldsOutcome(value: unknown, fields: string[][] | null, perItem: boolean, options: ResultOptions): ToolOutcome | null {
+ * that exist, not a silent {}. A path the response schema declares is not
+ * one: an optional key no item has is simply absent. The API call already
+ * happened, so the error says so and carries the unprojected result (as
+ * much as fits under half the cap), so neither a read nor a write has to
+ * run again to see it. */
+function unmatchedFieldsOutcome(value: unknown, fields: string[][] | null, perItem: boolean, options: ResultOptions, schema: unknown, page?: { nextPage: Record<string, unknown> | null }): ToolOutcome | null {
   if (fields === null) return null;
   const optional = new Set(options.optionalFields ?? []);
-  const unmatched = unmatchedFields(value, fields).filter((u) => !optional.has(u.path));
+  const unmatched = unmatchedFields(value, fields, schema).filter((u) => !optional.has(u.path));
   if (unmatched.length === 0) return null;
   const write = options.safety !== "read";
   const maxChars = options.maxChars ?? DEFAULT_MAX_RESULT_CHARS;
-  const full = write ? JSON.stringify(value) : undefined;
+  const retained = retainedResult(value, Math.floor(maxChars / 2));
+  const steps: string[] = [];
+  if (write) steps.push("This operation has already run; do not call it again to change fields." + (retained.whole ? " Its full result is in result." : retained.result !== undefined ? " The first items of its result are in result." : ""));
+  else if (retained.whole) steps.push("The full result is in result; use it rather than calling again.");
+  else if (retained.result !== undefined) steps.push("result holds the first " + (retained.result as unknown[]).length + " of " + (value as unknown[]).length + " items; the rest are over the size cap.");
+  steps.push((write ? "Next time, use" : "To project a later call, use") + " fields from the available keys" + (perItem ? " (fields apply to each item)" : "") + ", or omit fields for the whole result.");
   const structured = {
     error: "UnmatchedFields",
     code: "FIELDS_UNMATCHED",
     message: unmatchedFieldsMessage(unmatched, perItem),
     unmatched,
-    ...(full !== undefined && full.length <= maxChars / 2 ? { result: value } : {}),
-    next_steps: [
-      ...(write
-        ? ["This operation has already run; do not call it again to change fields." + (full !== undefined && full.length <= maxChars / 2 ? " Its full result is in result." : "")]
-        : ["Call again with fields from the available keys" + (perItem ? " (fields apply to each item)" : "") + ", or omit fields for the whole result."]),
-    ],
+    ...(retained.result !== undefined ? { result: retained.result } : {}),
+    ...(retained.omitted ? { result_omitted: retained.omitted } : {}),
+    ...(page ? { hasMore: page.nextPage !== null, ...(page.nextPage !== null ? { nextPage: page.nextPage } : {}) } : {}),
+    ...(options.requestId ? { request_id: options.requestId } : {}),
+    next_steps: steps,
   };
   return { text: JSON.stringify(structured), isError: true, structured };
+}
+
+/** The unprojected result an unmatched-fields error carries: whole when it
+ * fits the budget, the leading items of a list when only some do, and
+ * nothing for an object over the budget. */
+function retainedResult(value: unknown, budget: number): { result?: unknown; whole: boolean; omitted?: number } {
+  const text = JSON.stringify(value);
+  if (text === undefined) return { whole: false };
+  if (text.length <= budget) return { result: value, whole: true };
+  if (!Array.isArray(value)) return { whole: false };
+  const k = itemsThatFit(value, budget);
+  const head = value.slice(0, k);
+  if (JSON.stringify(head).length > budget) return { whole: false };
+  return { result: head, whole: false, omitted: value.length - k };
 }
 
 const fieldsHint = (perItem: boolean) => "Pass fields (dotted paths" + (perItem ? ", applied per item" : "") + ") to keep only the keys you need.";
@@ -1228,7 +1313,8 @@ export function pageOutcome(items: unknown[], nextPage: Record<string, unknown> 
   }
   const fields = options.fields ?? null;
   const maxChars = options.maxChars ?? DEFAULT_MAX_RESULT_CHARS;
-  const unmatched = unmatchedFieldsOutcome(items, fields, true, options);
+  const pageSchema = options.outputSchema?.properties as Record<string, { items?: unknown }> | undefined;
+  const unmatched = unmatchedFieldsOutcome(items, fields, true, options, pageSchema?.items, { nextPage });
   if (unmatched) return unmatched;
   const shown = projectFields(items, fields) as unknown[];
   const full = {
@@ -1287,7 +1373,7 @@ const omittedMarker = (key: string, chars: number, maxChars: number) => chars > 
 export function dataOutcome(data: unknown, options: ResultOptions = {}): ToolOutcome {
   const fields = options.fields ?? null;
   const maxChars = options.maxChars ?? DEFAULT_MAX_RESULT_CHARS;
-  const unmatched = data !== undefined && data !== null ? unmatchedFieldsOutcome(data, fields, Array.isArray(data), options) : null;
+  const unmatched = data !== undefined && data !== null ? unmatchedFieldsOutcome(data, fields, Array.isArray(data), options, options.outputSchema) : null;
   if (unmatched) return unmatched;
   const value = data !== undefined && data !== null ? projectFields(data, fields) : { ok: true };
   if (typeof value === "string") {
@@ -1444,6 +1530,28 @@ function payloadFailureCode(code: unknown): ErrorCode | undefined {
   return undefined;
 }
 
+/** The vendor's own code on an in-band GraphQL error: the first error's
+ * extensions.code, or its type (GitHub). */
+function graphqlVendorCode(error: unknown): string | undefined {
+  const first = (error as { errors?: { extensions?: { code?: unknown }; type?: unknown }[] } | null)?.errors?.[0];
+  const code = first?.extensions?.code ?? first?.type;
+  return typeof code === "string" && code !== "" ? code : undefined;
+}
+
+/** GraphQL error codes whose meaning is settled (Apollo's standard codes,
+ * GitHub's types, Linear's codes), by recovery class. Any other code is
+ * passed through as is, with no guessed next step. The CLI's
+ * classification (cli-agent.ts) uses the same table. */
+function graphqlErrorClass(code: string): "not_found" | "unauthenticated" | "forbidden" | "bad_input" | "rate_limited" | undefined {
+  const c = code.toUpperCase();
+  if (c === "NOT_FOUND") return "not_found";
+  if (c === "UNAUTHENTICATED" || c === "AUTHENTICATION_ERROR") return "unauthenticated";
+  if (c === "FORBIDDEN") return "forbidden";
+  if (c === "BAD_USER_INPUT" || c === "GRAPHQL_VALIDATION_FAILED" || c === "GRAPHQL_PARSE_FAILED" || c === "INPUT_ERROR") return "bad_input";
+  if (c === "RATE_LIMITED" || c === "RATELIMITED") return "rate_limited";
+  return undefined;
+}
+
 /** Classify an SDK error result by status: the code and what to do next. */
 export function classifyError(error: unknown, context: ErrorContext = {}): { code: ErrorCode; nextSteps: string[] } {
   const e = (error ?? {}) as { name?: string; message?: string; status?: number; code?: unknown; body?: unknown; violations?: unknown; rateLimit?: { retryAt?: Date } };
@@ -1467,13 +1575,24 @@ export function classifyError(error: unknown, context: ErrorContext = {}): { cod
     if (reported === "RATE_LIMITED") return { code: "RATE_LIMITED", nextSteps: [rateLimitNextStep(undefined)] };
     return { code: "CALL_FAILED", nextSteps: ["The API reported a failure in a successful response; body says why. Do not treat the call as done."] };
   }
-  if (status === 401) {
-    return context.hadCredential
-      ? { code: "AUTH_INVALID", nextSteps: ["The credential was rejected; it may be expired or for another environment." + (auth ? " " + auth : "")] }
-      : { code: "NO_AUTH", nextSteps: ["No credential was sent." + (auth ? " " + auth : "")] };
+  const unauthenticated = (): { code: ErrorCode; nextSteps: string[] } => context.hadCredential
+    ? { code: "AUTH_INVALID", nextSteps: ["The credential was rejected; it may be expired or for another environment." + (auth ? " " + auth : "")] }
+    : { code: "NO_AUTH", nextSteps: ["No credential was sent." + (auth ? " " + auth : "")] };
+  const forbidden = (): { code: ErrorCode; nextSteps: string[] } => scopes.length ? scopeFailure : { code: "AUTH_INVALID", nextSteps: ["The credential lacks access to this operation; it is not a retryable error."] };
+  // An in-band GraphQL error (HTTP 200): classified by the vendor's code.
+  if (e.name === "GraphQLRequestError") {
+    const vendor = graphqlVendorCode(error);
+    switch (vendor === undefined ? undefined : graphqlErrorClass(vendor)) {
+      case "not_found": return { code: "NOT_FOUND", nextSteps: ["Check the id in the arguments; list the resource first to find the right one."] };
+      case "unauthenticated": return unauthenticated();
+      case "forbidden": return forbidden();
+      case "bad_input": return { code: "INVALID_REQUEST", nextSteps: ["The API rejected an argument or the selection; the errors in body name it (message, path). Fix that and call again."] };
+      case "rate_limited": return { code: "RATE_LIMITED", nextSteps: [rateLimitNextStep(undefined)] };
+      default: return { code: "CALL_FAILED", nextSteps: [] };
+    }
   }
-  if (status === 403 && scopes.length) return scopeFailure;
-  if (status === 403) return { code: "AUTH_INVALID", nextSteps: ["The credential lacks access to this operation; it is not a retryable error."] };
+  if (status === 401) return unauthenticated();
+  if (status === 403) return forbidden();
   if (status === 402) return { code: "PLAN_LIMIT", nextSteps: ["The account's plan stops here; the body may name where to lift the limit. Do not retry the same call as is."] };
   if (status === 404) return { code: "NOT_FOUND", nextSteps: notFoundNextSteps(message, e.body) };
   if (status === 422 && body?.errors?.[0]?.code === "spec_error") {
@@ -1531,9 +1650,12 @@ export function errorOutcome(error: unknown, context: ErrorContext = {}): ToolOu
     ? (e.body as Record<string, unknown>).request_id ?? (e.body as Record<string, unknown>).requestId
     : undefined;
   const requestId = e?.response?.requestId ?? (typeof bodyRequestId === "string" ? bodyRequestId : undefined);
+  // The vendor's identity for the failure, next to the normalized code.
+  const vendorCode = e?.name === "GraphQLRequestError" ? graphqlVendorCode(error) : undefined;
   const structured = {
     error: e?.name ?? "Error",
     code,
+    ...(vendorCode ? { vendor_code: vendorCode } : {}),
     message: e?.message,
     ...(typeof e?.status === "number" ? { status: e.status } : {}),
     ...(requestId ? { request_id: requestId } : {}),
@@ -1570,6 +1692,8 @@ export interface DocsSource {
   hiddenOps?: HiddenOperation[];
   /** Count generated before runtime surface filters. */
   generatedOperationCount?: number;
+  /** Named input types for type and argument-path lookups. */
+  inputTypes?: InputTypes;
   /** Base URL of the docs site, or null when none is configured. */
   docsUrl(): string | null;
   /** Exact llms.txt URL when it is not at <docsUrl>/llms.txt. */
@@ -1617,10 +1741,56 @@ const REFERENCE_ARGUMENT_BUDGET = 6_000;
 /** Enum values listed inline; longer enums are cut with a count. */
 const REFERENCE_ENUM_VALUES = 30;
 
-/** Prose for one description: one line, markdown links reduced to their text. */
-function referenceProse(text: unknown): string {
+/** HTML that API descriptions carry for formatting only. Anything else
+ * in angle brackets (a <placeholder>) is text and stays. */
+const FORMATTING_TAGS = /<\/?(?:a|abbr|b|br|code|div|em|i|li|ol|p|pre|small|span|strong|sub|sup|u|ul)(?:\s[^<>]*)?\/?>/gi;
+/** A Markdown link or image: [text](url "title"), where the URL may hold
+ * one level of parentheses (Wikipedia's Foo_(bar)). */
+const MARKDOWN_LINK = /!?\[([^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)/g;
+
+/** Prose for one description, as one line: Markdown and HTML links reduced
+ * to their visible text, formatting tags and emphasis dropped, <code> as
+ * inline code (kept, because agents copy it). */
+export function referenceProse(text: unknown): string {
   if (typeof text !== "string") return "";
-  return text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\s+/g, " ").trim();
+  return text
+    .replace(/<code>([\s\S]*?)<\/code>/gi, "`$1`")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(FORMATTING_TAGS, "")
+    .replace(MARKDOWN_LINK, "$1")
+    .replace(/\[([^\[\]]+)\]\[[^\[\]]*\]/g, "$1")
+    .replace(/(\*\*|__)(?=\S)([^*_]*?\S)\1/g, "$2")
+    .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Abbreviations whose period does not end a sentence. */
+const ABBREVIATION = /(?:^|[\s(])(?:e\.g|i\.e|etc|vs|approx|incl|cf|no|min|max)\.$/i;
+
+/** A description's sentences, every character kept: a sentence ends at
+ * . ! or ? (closing quotes and brackets included) before whitespace, not
+ * after an abbreviation, and never inside inline code. */
+function sentencesOf(prose: string): string[] {
+  const sentences: string[] = [];
+  let current = "";
+  for (const part of prose.split(/(?<=[.!?]["')\]]?)\s+/)) {
+    current = current ? current + " " + part : part;
+    const openCode = (current.match(/`/g) ?? []).length % 2 === 1;
+    if (!openCode && !ABBREVIATION.test(current)) {
+      sentences.push(current);
+      current = "";
+    }
+  }
+  if (current) sentences.push(current);
+  return sentences;
+}
+
+/** Cut one long sentence at a word boundary, never inside inline code. */
+function cutSentence(sentence: string, limit: number): string {
+  let cut = sentence.slice(0, limit).replace(/\s+\S*$/, "");
+  if ((cut.match(/`/g) ?? []).length % 2 === 1) cut = cut.slice(0, cut.lastIndexOf("`")).trimEnd();
+  return cut.replace(/[\s,;:(]+$/, "") + "…";
 }
 
 /** Sentences the generator appends to an argument's description because a
@@ -1633,18 +1803,16 @@ const REFERENCE_ARGUMENT_PROSE = 160;
 /** An argument's description, cut to its leading sentences within the
  * budget plus every note the generator added. The full text is in the
  * schema (schema: true). */
-function argumentProse(text: unknown): string {
+export function argumentProse(text: unknown): string {
   const prose = referenceProse(text);
   if (prose.length <= REFERENCE_ARGUMENT_PROSE) return prose;
-  const sentences = prose.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)\s*/g) ?? [prose];
   const kept: string[] = [];
   let used = 0;
   let cut = false;
-  for (const raw of sentences) {
-    const sentence = raw.trim();
+  for (const sentence of sentencesOf(prose)) {
     if (REFERENCE_NOTE.test(sentence)) { kept.push(sentence); continue; }
     if (kept.length === 0 || used + sentence.length <= REFERENCE_ARGUMENT_PROSE) {
-      kept.push(sentence.length > REFERENCE_ARGUMENT_PROSE * 2 ? sentence.slice(0, REFERENCE_ARGUMENT_PROSE * 2).replace(/\s+\S*$/, "") + "…" : sentence);
+      kept.push(sentence.length > REFERENCE_ARGUMENT_PROSE * 2 ? cutSentence(sentence, REFERENCE_ARGUMENT_PROSE * 2) : sentence);
       used += sentence.length;
     } else {
       cut = true;
@@ -1688,9 +1856,13 @@ function referenceObject(schema: Record<string, unknown>): Record<string, unknow
   return undefined;
 }
 
+/** Where an argument line sits: the operation, the dotted path to it,
+ * and the named input type of the object that holds it, when known. */
+interface ArgumentContext { tool: string; types?: InputTypes; path: string[]; typeName?: string }
+
 /** One line per argument, nested fields indented beneath their object.
  * Each top-level argument is spelled out as deep as fits its budget. */
-function referenceArguments(schema: Record<string, unknown>, lines: string[]): void {
+function referenceArguments(schema: Record<string, unknown>, lines: string[], context: ArgumentContext): void {
   const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
   for (const name of Object.keys(properties)) {
     const only = { ...schema, properties: { [name]: properties[name] } };
@@ -1699,14 +1871,14 @@ function referenceArguments(schema: Record<string, unknown>, lines: string[]): v
     // below the cut; then one level with names only.
     for (const [depth, names] of [[REFERENCE_DEPTH, true], [2, true], [2, false], [1, true]] as const) {
       block = [];
-      referenceArgumentLines(only, 0, depth, names, "  ", block);
+      referenceArgumentLines(only, 0, depth, names, "  ", block, context);
       if (block.join("\n").length <= REFERENCE_ARGUMENT_BUDGET) break;
     }
     lines.push(...block);
   }
 }
 
-function referenceArgumentLines(schema: Record<string, unknown>, depth: number, maxDepth: number, names: boolean, indent: string, lines: string[]): void {
+function referenceArgumentLines(schema: Record<string, unknown>, depth: number, maxDepth: number, names: boolean, indent: string, lines: string[], context: ArgumentContext): void {
   const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
   const required = new Set(Array.isArray(schema.required) ? schema.required as string[] : []);
   for (const [name, child] of Object.entries(properties)) {
@@ -1716,16 +1888,27 @@ function referenceArgumentLines(schema: Record<string, unknown>, depth: number, 
       ...(child.default !== undefined && !/\bdefault\b/i.test(description) ? ["default " + JSON.stringify(child.default)] : []),
       ...(child.deprecated === true && !/deprecated/i.test(description) ? ["deprecated"] : []),
     ];
-    lines.push(indent + name + " (" + referenceType(child) + (required.has(name) ? ", required" : "") + (extras.length ? ", " + extras.join(", ") : "") + ")" + (description ? ": " + description : ""));
     const nested = referenceObject(child);
+    // An object argument reads as its named type (IssueFilter), which
+    // read_docs can look up; everything else keeps its inline type.
+    const expression = context.path.length === 0
+      ? context.types?.args[context.tool]?.[name]
+      : context.typeName ? context.types?.types[context.typeName]?.fields?.[name]?.type : undefined;
+    const named = nested ? namedTypesIn(context.types, expression) : [];
+    const type = named.length > 0 ? expression! : referenceType(child);
+    lines.push(indent + name + " (" + type + (required.has(name) ? ", required" : "") + (extras.length ? ", " + extras.join(", ") : "") + ")" + (description ? ": " + description : ""));
     if (!nested) continue;
+    const path = [...context.path, name];
+    const objects = named.filter((typeName) => context.types!.types[typeName]!.fields);
+    const inner: ArgumentContext = { ...context, path, typeName: objects.length === 1 ? objects[0] : undefined };
     if (depth + 1 < maxDepth) {
-      referenceArgumentLines(nested, depth + 1, maxDepth, names, indent + "  ", lines);
+      referenceArgumentLines(nested, depth + 1, maxDepth, names, indent + "  ", lines, inner);
       continue;
     }
     if (!names) continue;
     const keys = Object.keys(nested.properties as object);
-    lines.push(indent + "  fields: " + keys.slice(0, 40).join(", ") + (keys.length > 40 ? ", … " + (keys.length - 40) + " more" : "") + " (types with schema: true)");
+    // Field types (and any cut names) are one path lookup away.
+    lines.push(indent + "  fields: " + keys.slice(0, 40).join(", ") + (keys.length > 40 ? ", … " + (keys.length - 40) + " more: read_docs " + JSON.stringify({ page: context.tool, path: path.join(".") }) + " lists all" : ""));
   }
 }
 
@@ -1758,7 +1941,7 @@ function referenceShape(schema: Record<string, unknown> | undefined, depth = 0):
  * Schemas come with `schema: true`, as the CLI's `docs --schema` does; they
  * cost several times the rest and an agent rarely needs them to call.
  */
-export function referenceText(op: OpLike, options: { schema?: boolean } = {}): string {
+export function referenceText(op: OpLike, options: { schema?: boolean; types?: InputTypes } = {}): string {
   const safety = operationSafety(op);
   // A credential-defaulted argument (Twilio's AccountSid) is left out, so the
   // example shows the call an agent should make.
@@ -1776,7 +1959,7 @@ export function referenceText(op: OpLike, options: { schema?: boolean } = {}): s
   const input = toolInputSchema(op);
   if (Object.keys((input.properties ?? {}) as object).length > 0) {
     lines.push("", "Arguments:");
-    referenceArguments(input, lines);
+    referenceArguments(input, lines, { tool: op.tool, types: options.types, path: [] });
   }
   lines.push("", "Example arguments: " + JSON.stringify(example));
   if (op.outputSchema) {
@@ -1786,6 +1969,15 @@ export function referenceText(op: OpLike, options: { schema?: boolean } = {}): s
     lines.push("", "Input schema: " + JSON.stringify(input));
     if (op.outputSchema) lines.push("", "Output schema: " + JSON.stringify(op.outputSchema));
   } else {
+    // Say how to drill into an object argument: the page above stops at a
+    // depth and a size, and the schema is the whole graph at once.
+    const nested = Object.entries((input.properties ?? {}) as Record<string, Record<string, unknown>>)
+      .find(([, child]) => child && typeof child === "object" && referenceObject(child))?.[0];
+    if (nested) {
+      const named = namedTypesIn(options.types, options.types?.args[op.tool]?.[nested])[0];
+      lines.push("", "Nested arguments: read_docs " + JSON.stringify({ page: op.tool, path: nested }) + " gives an argument's type and all its fields; extend the path (\"" + nested + ".<field>\") to go deeper."
+        + (named ? " Named types read the same way: read_docs " + JSON.stringify({ page: named }) + "." : ""));
+    }
     lines.push("", "Full input and output JSON Schemas: read_docs " + JSON.stringify({ page: op.tool, schema: true }) + ".");
   }
   return lines.join("\n");
@@ -1857,20 +2049,48 @@ export const READ_DOCS_LIMIT = 20_000;
 
 /** One part of a long page, ending with how to read the next part. */
 function docsPart(page: string, text: string, offset: number, schema = false): string {
+  return docsPartFor({ page, ...(schema ? { schema: true } : {}) }, text, offset);
+}
+
+/** docsPart for any read_docs arguments (a page, a path, schema). */
+function docsPartFor(request: Record<string, unknown>, text: string, offset: number): string {
   if (offset <= 0 && text.length <= READ_DOCS_LIMIT) return text;
   const start = Math.min(Math.max(0, offset), text.length);
   const end = Math.min(text.length, start + READ_DOCS_LIMIT);
   const more = end < text.length
-    ? "\n\n[Characters " + start + "-" + end + " of " + text.length + ". Continue with read_docs " + JSON.stringify({ page, ...(schema ? { schema: true } : {}), offset: end }) + ".]"
+    ? "\n\n[Characters " + start + "-" + end + " of " + text.length + ". Continue with read_docs " + JSON.stringify({ ...request, offset: end }) + ".]"
     : "\n\n[Characters " + start + "-" + end + " of " + text.length + "; end of page.]";
   return text.slice(start, end) + more;
 }
 
-export async function docsRead(source: DocsSource, page: string, offset = 0, options: { schema?: boolean } = {}): Promise<ToolOutcome> {
+/** How read_docs names a type lookup, for the pages that mention types. */
+function readDocsTypeHint(name: string): string {
+  return "read_docs " + JSON.stringify({ page: name });
+}
+
+/** One argument path within an operation or a named type. */
+function docsPathOutcome(source: DocsSource, root: { tool: string; inputSchema: Record<string, unknown> } | { type: string }, page: string, path: string, offset: number): ToolOutcome {
+  const found = argumentPathText(source.inputTypes, root, path, readDocsTypeHint);
+  if (found.ok) return { text: docsPartFor({ page, path }, found.text, offset), isError: false };
+  const structured = {
+    error: "NotFoundError", code: "NOT_FOUND", message: found.message,
+    ...(found.available.length > 0 ? { available: found.available } : {}),
+    next_steps: [found.available.length > 0 ? "Pass one of the available fields as the next path segment." : "read_docs " + JSON.stringify({ page }) + " lists the arguments."],
+  };
+  return { text: JSON.stringify(structured), isError: true, structured };
+}
+
+export async function docsRead(source: DocsSource, page: string, offset = 0, options: { schema?: boolean; path?: string } = {}): Promise<ToolOutcome> {
   const opMatch = findOperation(source.ops, page);
-  if (opMatch) return { text: docsPart(page, referenceText(opMatch, options), offset, options.schema === true), isError: false };
+  const typeMatch = opMatch ? undefined : findInputType(source.inputTypes, page);
+  if (options.path !== undefined && options.path.trim() !== "") {
+    if (opMatch) return docsPathOutcome(source, opMatch, page, options.path, offset);
+    if (typeMatch) return docsPathOutcome(source, { type: typeMatch }, page, options.path, offset);
+  }
+  if (opMatch) return { text: docsPart(page, referenceText(opMatch, { schema: options.schema, types: source.inputTypes }), offset, options.schema === true), isError: false };
   const omittedMatch = findOperation(source.omittedOps ?? [], page);
   if (omittedMatch) return omittedPlanLimit(source, [omittedMatch], omittedMatch.tool);
+  if (typeMatch) return { text: docsPartFor({ page }, inputTypeText(source.inputTypes!, typeMatch, readDocsTypeHint), offset), isError: false };
   let target = page;
   if (!/^https?:\/\//.test(target)) {
     const index = await fetchDocs(source, "llms.txt");
@@ -1909,7 +2129,8 @@ export async function callSharedTool(
       const hidden = findHidden(source, args.page);
       if (hidden) return hiddenOutcome(hidden);
     }
-    return typeof args.page === "string" ? docsRead(source, args.page, offset, { schema }) : argumentsError({ tool: name }, [{ code: "MISSING_ARGUMENT", argument: "page", message: "read_docs requires a page string." }]);
+    const path = typeof args.path === "string" ? args.path : undefined;
+    return typeof args.page === "string" ? docsRead(source, args.page, offset, { schema, path }) : argumentsError({ tool: name }, [{ code: "MISSING_ARGUMENT", argument: "page", message: "read_docs requires a page string." }]);
   }
   if (name === "execute") {
     if (typeof args.operation !== "string") return argumentsError({ tool: name }, [{ code: "MISSING_ARGUMENT", argument: "operation", message: "execute requires an operation name." }]);
