@@ -23,7 +23,7 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TypeshipClient, formatDebugEvent, type ClientOptions, type DebugEvent } from "./index.js";
 import { asApiResult, mediaTypeForPath } from "./core/http.js";
-import { GLOBALS, OMITTED_OPS, OPS, buildArgs, type OpSpec } from "./ops.js";
+import { GLOBALS, INPUT_TYPES, OMITTED_OPS, OPS, buildArgs, type OpSpec } from "./ops.js";
 import {
   DEFAULT_MAX_RESULT_CHARS, SUPPORTED_PROTOCOL_VERSIONS, McpAccountLinkRequired, argumentsError, asJsonRpc, binaryOutcome, callSharedTool, checkRequestHeaders,
   createStdioRpcHandler, dataOutcome, errorOutcome, handleRpc, hiddenOperations, isRpcOutcome, pageOutcome, parseIncludeList, prepareCall, resolveReferences, serverInstructions,
@@ -43,7 +43,7 @@ export { McpAccountLinkRequired } from "./mcp-protocol.js";
 const BIN = "typeship";
 const PKG_NAME = "@typeship-ax/mcp";
 const SERVER_NAME = "typeship-mcp";
-const SERVER_VERSION = "0.22.0";
+const SERVER_VERSION = "0.22.1";
 /** The MCP client's announced name (clientInfo in request _meta), for the User-Agent. */
 let MCP_CLIENT_NAME: string | null = null;
 function noteClientInfo(message: unknown): void {
@@ -264,7 +264,7 @@ async function callOperationRaw(op: OpSpec, rawArgs: Record<string, unknown>, re
     hadCredential: !!remote || CLIENT_CREDENTIALS.get(client) === true,
     requiredScopes: requiredScopes(op.security),
   };
-  const shape = { fields, optionalFields, maxChars, pagination: op.pagination, args, safety: op.safety };
+  const shape = { fields, optionalFields, maxChars, pagination: op.pagination, args, safety: op.safety, outputSchema: op.outputSchema };
   try {
     const target = (client as unknown as Record<string, Record<string, (...a: unknown[]) => unknown>>)[op.resource]!;
     let result = await asApiResult(target[op.method]!(...callArgs) as Promise<unknown>);
@@ -377,6 +377,7 @@ function saveBinary(bytes: Uint8Array, _mediaType: string, suggestedName: string
 const docsSource: DocsSource = {
   ops: MCP_OPS as unknown as OpLike[],
   omittedOps: OMITTED_OPS as unknown as OpLike[],
+  inputTypes: INPUT_TYPES,
   hiddenOps: hiddenOperations(OPS as unknown as OpLike[], { readOnly: READ_ONLY, include: INCLUDE, uploads: LOCAL_PROCESS }, { readOnly: READ_ONLY_SWITCH, include: TOOLS_SWITCH }),
   generatedOperationCount: OPS.length,
   docsUrl: () => readJson<{ docsUrl?: string }>("config.json")?.docsUrl ?? DOCS_URL_DEFAULT,
