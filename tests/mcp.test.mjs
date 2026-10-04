@@ -46,7 +46,7 @@ test("server/discover, tools/list, tools/call over stdio", async () => {
     const responses = await talk({ "TYPESHIP_BASE_URL": mock.url, "TYPESHIP_CREDENTIALS": "{\"apiKey\":\"test-token\"}" }, [
       { jsonrpc: "2.0", id: 1, method: "server/discover", params: { _meta: META } },
       { jsonrpc: "2.0", id: 2, method: "tools/list", params: { _meta: META } },
-      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "execute", arguments: {"operation":"projects_create","arguments":{"name":"example","spec":{"source":{"type":"url","url":{"url":"https://api.parcel.example/openapi.json"}}},"targets":[{"name":"Parcel CLI","type":"cli","deliveries":[{"type":"repository","repository":{"provider":"github","identifier":"parcel-example/parcel-client","package_name":"parcel-client","publish_on_merge":false}}]}]}}, _meta: META } },
+      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "execute", arguments: {"operation":"projects_create","arguments":{"name":"example","spec":{"source":{"type":"url","url":{"url":"https://api.parcel.example/openapi.json"}}},"targets":[{"name":"Parcel CLI","type":"cli","deliveries":[{"type":"repository","repository":{"provider":"github","identifier":"parcel-example/parcel-client","module_path":"github.com/parcel-example/parcel-client","publish_on_merge":false}}]}]}}, _meta: META } },
     ]);
     const discover = responses.get(1);
     assert.equal(discover.result.supportedVersions[0], "2026-07-28", JSON.stringify(discover));
@@ -68,7 +68,7 @@ test("tool errors prefer the JSON request_id over a stale header", async () => {
   const mock = await startMock({ status: 500, contentType: "application/json", body: JSON.stringify({ code: "internal_error", message: "expected failure", request_id: "req_mcp_body_test" }), headers: { "Request-Id": "req_mcp_stale" } });
   try {
     const responses = await talk({ "TYPESHIP_BASE_URL": mock.url, "TYPESHIP_CREDENTIALS": "{\"apiKey\":\"test-token\"}" }, [
-      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "execute", arguments: {"operation":"projects_create","arguments":{"name":"example","spec":{"source":{"type":"url","url":{"url":"https://api.parcel.example/openapi.json"}}},"targets":[{"name":"Parcel CLI","type":"cli","deliveries":[{"type":"repository","repository":{"provider":"github","identifier":"parcel-example/parcel-client","package_name":"parcel-client","publish_on_merge":false}}]}]}}, _meta: META } },
+      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "execute", arguments: {"operation":"projects_create","arguments":{"name":"example","spec":{"source":{"type":"url","url":{"url":"https://api.parcel.example/openapi.json"}}},"targets":[{"name":"Parcel CLI","type":"cli","deliveries":[{"type":"repository","repository":{"provider":"github","identifier":"parcel-example/parcel-client","module_path":"github.com/parcel-example/parcel-client","publish_on_merge":false}}]}]}}, _meta: META } },
     ]);
     const call = responses.get(4);
     assert.equal(call.result.isError, true, JSON.stringify(call).slice(0, 300));

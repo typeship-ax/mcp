@@ -806,7 +806,7 @@
                     "repository": {
                       "provider": "github",
                       "identifier": "parcel-example/parcel-client",
-                      "package_name": "parcel-client",
+                      "module_path": "github.com/parcel-example/parcel-client",
                       "publish_on_merge": false
                     }
                   }
@@ -1155,13 +1155,12 @@
                 "type": {
                   "enum": [
                     "cli",
-                    "go_cli",
                     "mcp",
                     "typescript_sdk",
                     "python_sdk",
                     "go_sdk"
                   ],
-                  "description": "Generator implementation selected by a Target. This is configuration, not identity; several Targets may use the same generator. cli is the TypeScript CLI; go_cli is the native Go CLI, a distinct product that imports one exact paired Go SDK module rather than a client of its own.",
+                  "description": "Package type selected by a Target. Several Targets may use the same type. The CLI is a self-contained command-line package and requires no SDK Target.",
                   "type": "string"
                 },
                 "status": {
@@ -1328,7 +1327,7 @@
                     "repository": {
                       "provider": "github",
                       "identifier": "parcel-example/parcel-client",
-                      "package_name": "parcel-client",
+                      "module_path": "github.com/parcel-example/parcel-client",
                       "publish_on_merge": false
                     }
                   }
@@ -1906,7 +1905,7 @@
                 "repository": {
                   "provider": "github",
                   "identifier": "parcel-example/parcel-client",
-                  "package_name": "parcel-client",
+                  "module_path": "github.com/parcel-example/parcel-client",
                   "publish_on_merge": false
                 }
               }
@@ -3116,13 +3115,12 @@
                 "type": {
                   "enum": [
                     "cli",
-                    "go_cli",
                     "mcp",
                     "typescript_sdk",
                     "python_sdk",
                     "go_sdk"
                   ],
-                  "description": "Generator implementation selected by a Target. This is configuration, not identity; several Targets may use the same generator. cli is the TypeScript CLI; go_cli is the native Go CLI, a distinct product that imports one exact paired Go SDK module rather than a client of its own.",
+                  "description": "Package type selected by a Target. Several Targets may use the same type. The CLI is a self-contained command-line package and requires no SDK Target.",
                   "type": "string"
                 },
                 "name": {
@@ -5451,7 +5449,7 @@
                 "repository": {
                   "provider": "github",
                   "identifier": "parcel-example/parcel-client",
-                  "package_name": "parcel-client",
+                  "module_path": "github.com/parcel-example/parcel-client",
                   "publish_on_merge": false
                 }
               }
@@ -5498,13 +5496,12 @@
           "type": {
             "enum": [
               "cli",
-              "go_cli",
               "mcp",
               "typescript_sdk",
               "python_sdk",
               "go_sdk"
             ],
-            "description": "Generator implementation selected by a Target. This is configuration, not identity; several Targets may use the same generator. cli is the TypeScript CLI; go_cli is the native Go CLI, a distinct product that imports one exact paired Go SDK module rather than a client of its own.",
+            "description": "Package type selected by a Target. Several Targets may use the same type. The CLI is a self-contained command-line package and requires no SDK Target.",
             "type": "string",
             "example": "cli"
           },
@@ -5748,7 +5745,7 @@
                         "type": "boolean"
                       },
                       "unit_tests": {
-                        "description": "Also generate unit tests for the helper code a native Go CLI shares, such as raw API path checks, saved credentials, and MCP client configuration. Applies to go_cli Targets. Off by default; tests for the generated commands are always included.",
+                        "description": "Also generate unit tests for the helper code a CLI shares, such as raw API path checks, saved credentials, and MCP client configuration. Applies to cli Targets. Off by default; tests for the generated commands are always included.",
                         "type": "boolean"
                       }
                     },
@@ -5971,7 +5968,7 @@
                           ]
                         },
                         "module_path": {
-                          "description": "Go module identity for the Go SDK or Go CLI Target where applicable.",
+                          "description": "Go module identity for the Go SDK or CLI Target where applicable.",
                           "type": [
                             "string",
                             "null"
@@ -6020,7 +6017,7 @@
                 "repository": {
                   "provider": "github",
                   "identifier": "parcel-example/parcel-client",
-                  "package_name": "parcel-client",
+                  "module_path": "github.com/parcel-example/parcel-client",
                   "publish_on_merge": false
                 }
               }
@@ -6076,40 +6073,13 @@
           "type": {
             "enum": [
               "cli",
-              "go_cli",
               "mcp",
               "typescript_sdk",
               "python_sdk",
               "go_sdk"
             ],
-            "description": "Generator implementation selected by a Target.",
+            "description": "Package type selected by a Target.",
             "type": "string"
-          },
-          "dependency": {
-            "description": "Present only on a go_cli Target, naming the sibling Go SDK Target the CLI is generated against.",
-            "anyOf": [
-              {
-                "description": "One Target generated from a sibling Target.",
-                "properties": {
-                  "type": {
-                    "const": "go_sdk_module",
-                    "type": "string"
-                  },
-                  "target_id": {
-                    "description": "Stable identifier for one configured generated product.",
-                    "examples": [
-                      "tgt_5m8q2v7k1p9d4h6c"
-                    ],
-                    "pattern": "^tgt_[a-z0-9]{16}$",
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "status": {
             "enum": [
@@ -6302,7 +6272,7 @@
             "repository": {
               "provider": "github",
               "identifier": "parcel-example/parcel-client",
-              "package_name": "parcel-client",
+              "module_path": "github.com/parcel-example/parcel-client",
               "publish_on_merge": false
             }
           }
@@ -6371,7 +6341,7 @@
           "items": {
             "type": "array",
             "items": {
-              "description": "All Targets follow reviewed SemVer.",
+              "description": "All Targets follow reviewed SemVer. Before 1.0.0, breaking changes require a minor version; the policy is fixed rather than configurable.",
               "properties": {
                 "id": {
                   "description": "Stable identifier for one configured generated product.",
@@ -6407,40 +6377,13 @@
                 "type": {
                   "enum": [
                     "cli",
-                    "go_cli",
                     "mcp",
                     "typescript_sdk",
                     "python_sdk",
                     "go_sdk"
                   ],
-                  "description": "Generator implementation selected by a Target.",
+                  "description": "Package type selected by a Target. Several Targets may use the same type. The CLI is a self-contained command-line package and requires no SDK Target.",
                   "type": "string"
-                },
-                "dependency": {
-                  "description": "Present only on a go_cli Target, naming the sibling Go SDK Target the CLI is generated against.",
-                  "anyOf": [
-                    {
-                      "description": "One Target generated from a sibling Target.",
-                      "properties": {
-                        "type": {
-                          "const": "go_sdk_module",
-                          "type": "string"
-                        },
-                        "target_id": {
-                          "description": "Stable identifier for one configured generated product.",
-                          "examples": [
-                            "tgt_5m8q2v7k1p9d4h6c"
-                          ],
-                          "pattern": "^tgt_[a-z0-9]{16}$",
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
                 },
                 "status": {
                   "enum": [
@@ -6457,7 +6400,7 @@
                   "type": "string"
                 },
                 "version_current": {
-                  "description": "Read-only version of the Target's latest release, or null before its first release.",
+                  "description": "Read-only version of the Target's latest release, or null before its first release. Publishing status is separate; inspect the release for its results.",
                   "type": [
                     "string",
                     "null"
@@ -6472,7 +6415,7 @@
                   "type": "string"
                 },
                 "checks": {
-                  "description": "Required checks run against the code in the Draft.",
+                  "description": "Required checks run against the code in the Draft. Generated checks and customer commands share one reproducible workflow; repository_required names existing repository checks. Supplying checks replaces all settings. Omitted generated restores build, package, and public_entrypoint; omitted repository_required and customer restore empty lists. An empty object restores these defaults. An empty array clears the corresponding list.",
                   "properties": {
                     "generated": {
                       "default": [
@@ -6512,57 +6455,57 @@
                   "type": "object"
                 },
                 "config": {
-                  "description": "Target-specific overrides merged over Project.config.",
+                  "description": "Target-specific overrides merged over Project.config. GraphQL settings are Spec-owned and never appear here.",
                   "anyOf": [
                     {
-                      "description": "Target-specific generation and delivery overrides.",
+                      "description": "Target-specific generation and delivery overrides. Authentication may only select a Project-owned OAuth application. OAuth server metadata, applications, and identity policy remain Project-owned. Self-hosted MCP access may be overridden for a Target-specific deployment.",
                       "properties": {
                         "globals": {
-                          "description": "Wire names of query/header parameters that become settable once on the generated client and auto-ap…",
+                          "description": "Wire names of query/header parameters that become settable once on the generated client and auto-apply to every operation that accepts them; per-call values win. Names that match nothing are reported as generation warnings.",
                           "maxItems": 20,
                           "type": "array"
                         },
                         "include": {
-                          "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path se…",
+                          "description": "Generate only matching operations: tag names, or path globs such as `/zones/**` (`*` is one path segment, `**` any number), optionally after an HTTP method (`DELETE /zones/*`). Applied before the Spec size limit, with components nothing references any more removed, so a one-shot run can generate part of a Spec up to 64 MB. Selectors that match nothing are reported as generation warnings.",
                           "maxItems": 100,
                           "type": "array"
                         },
                         "exclude": {
-                          "description": "Leave out matching operations (tag names or path globs, as for `include`).",
+                          "description": "Leave out matching operations (tag names or path globs, as for `include`). Wins over `include`.",
                           "maxItems": 100,
                           "type": "array"
                         },
                         "retries": {
-                          "description": "Retry behavior.",
+                          "description": "Retry behavior. Top-level fields adjust every operation; operations maps operationId or \"METHOD /path\" keys to per-operation overrides.",
                           "type": "object"
                         },
                         "pagination": {
-                          "description": "Per-operation pagination control, keyed by operationId or \"METHOD /path\".",
+                          "description": "Per-operation pagination control, keyed by operationId or \"METHOD /path\". Unmatched keys are reported as generation warnings.",
                           "type": "object"
                         },
                         "auth": {
-                          "description": "Selects a Project OAuth application for one Target.",
+                          "description": "Selects a Project OAuth application for one Target. OAuth server metadata, applications, and identity policy remain Project-owned.",
                           "type": "object"
                         },
                         "cli": {
-                          "description": "How the generated CLI behaves.",
+                          "description": "How the generated CLI behaves. Part of Config.",
                           "type": "object"
                         },
                         "mcp": {
-                          "description": "How generated MCP servers and the Typeship-hosted endpoint behave.",
+                          "description": "How generated MCP servers and the Typeship-hosted endpoint behave. Part of Config.",
                           "type": "object"
                         },
                         "readme": {
-                          "description": "Generated README behavior.",
+                          "description": "Generated README behavior. Part of Config.",
                           "type": "object"
                         },
                         "package": {
-                          "description": "Published-package metadata the API spec does not own.",
+                          "description": "Published-package metadata the API spec does not own. Repository is derived from each destination.",
                           "type": "object"
                         },
                         "docs_url": {
                           "format": "uri",
-                          "description": "The API's documentation site.",
+                          "description": "The API's documentation site. Read through its llms.txt by the generated CLI's docs command, the MCP server's docs tools, and the package's AGENTS.md. Defaults to the Spec's externalDocs URL.",
                           "type": [
                             "string",
                             "null"
@@ -6630,7 +6573,7 @@
           },
           "truncated": {
             "type": "object",
-            "description": "Present when the page was cut to fit the result size cap: how many items were omitted and how to ge…",
+            "description": "Present when the page was cut to fit the result size cap: how many items were omitted and how to get them",
             "additionalProperties": true
           }
         }
@@ -6720,40 +6663,13 @@
           "type": {
             "enum": [
               "cli",
-              "go_cli",
               "mcp",
               "typescript_sdk",
               "python_sdk",
               "go_sdk"
             ],
-            "description": "Generator implementation selected by a Target.",
+            "description": "Package type selected by a Target.",
             "type": "string"
-          },
-          "dependency": {
-            "description": "Present only on a go_cli Target, naming the sibling Go SDK Target the CLI is generated against.",
-            "anyOf": [
-              {
-                "description": "One Target generated from a sibling Target.",
-                "properties": {
-                  "type": {
-                    "const": "go_sdk_module",
-                    "type": "string"
-                  },
-                  "target_id": {
-                    "description": "Stable identifier for one configured generated product.",
-                    "examples": [
-                      "tgt_5m8q2v7k1p9d4h6c"
-                    ],
-                    "pattern": "^tgt_[a-z0-9]{16}$",
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "status": {
             "enum": [
@@ -7220,7 +7136,7 @@
                         "type": "boolean"
                       },
                       "unit_tests": {
-                        "description": "Also generate unit tests for the helper code a native Go CLI shares, such as raw API path checks, saved credentials, and MCP client configuration. Applies to go_cli Targets. Off by default; tests for the generated commands are always included.",
+                        "description": "Also generate unit tests for the helper code a CLI shares, such as raw API path checks, saved credentials, and MCP client configuration. Applies to cli Targets. Off by default; tests for the generated commands are always included.",
                         "type": "boolean"
                       }
                     },
@@ -7445,40 +7361,13 @@
           "type": {
             "enum": [
               "cli",
-              "go_cli",
               "mcp",
               "typescript_sdk",
               "python_sdk",
               "go_sdk"
             ],
-            "description": "Generator implementation selected by a Target.",
+            "description": "Package type selected by a Target.",
             "type": "string"
-          },
-          "dependency": {
-            "description": "Present only on a go_cli Target, naming the sibling Go SDK Target the CLI is generated against.",
-            "anyOf": [
-              {
-                "description": "One Target generated from a sibling Target.",
-                "properties": {
-                  "type": {
-                    "const": "go_sdk_module",
-                    "type": "string"
-                  },
-                  "target_id": {
-                    "description": "Stable identifier for one configured generated product.",
-                    "examples": [
-                      "tgt_5m8q2v7k1p9d4h6c"
-                    ],
-                    "pattern": "^tgt_[a-z0-9]{16}$",
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "status": {
             "enum": [
@@ -8172,7 +8061,7 @@
               "repository": {
                 "provider": "github",
                 "identifier": "parcel-example/parcel-client",
-                "package_name": "parcel-client",
+                "module_path": "github.com/parcel-example/parcel-client",
                 "publish_on_merge": false
               }
             }
@@ -8248,7 +8137,7 @@
                         ]
                       },
                       "module_path": {
-                        "description": "Go module identity for the Go SDK or Go CLI Target where applicable.",
+                        "description": "Go module identity for the Go SDK or CLI Target where applicable.",
                         "type": [
                           "string",
                           "null"
@@ -8305,7 +8194,7 @@
               "repository": {
                 "provider": "github",
                 "identifier": "parcel-example/parcel-client",
-                "package_name": "parcel-client",
+                "module_path": "github.com/parcel-example/parcel-client",
                 "publish_on_merge": false
               }
             }
@@ -8500,7 +8389,7 @@
           "repository": {
             "provider": "github",
             "identifier": "parcel-example/parcel-client",
-            "package_name": "parcel-client",
+            "module_path": "github.com/parcel-example/parcel-client",
             "publish_on_merge": false
           }
         }
@@ -8992,7 +8881,7 @@
             "repository": {
               "provider": "github",
               "identifier": "parcel-example/parcel-client",
-              "package_name": "parcel-client",
+              "module_path": "github.com/parcel-example/parcel-client",
               "publish_on_merge": true
             }
           }
@@ -9057,7 +8946,7 @@
                 ]
               },
               "module_path": {
-                "description": "Go module identity for the Go SDK or Go CLI Target where applicable.",
+                "description": "Go module identity for the Go SDK or CLI Target where applicable.",
                 "type": [
                   "string",
                   "null"
@@ -9078,7 +8967,7 @@
             "example": {
               "provider": "github",
               "identifier": "parcel-example/parcel-client",
-              "package_name": "parcel-client",
+              "module_path": "github.com/parcel-example/parcel-client",
               "publish_on_merge": true
             }
           },
@@ -9271,7 +9160,7 @@
         "repository": {
           "provider": "github",
           "identifier": "parcel-example/parcel-client",
-          "package_name": "parcel-client",
+          "module_path": "github.com/parcel-example/parcel-client",
           "publish_on_merge": true
         }
       }
@@ -9484,13 +9373,12 @@
           "type": {
             "enum": [
               "cli",
-              "go_cli",
               "mcp",
               "typescript_sdk",
               "python_sdk",
               "go_sdk"
             ],
-            "description": "Generator implementation selected by a Target.",
+            "description": "Package type selected by a Target.",
             "type": "string"
           },
           "name": {
@@ -9653,17 +9541,6 @@
                     "draft_title_invalid",
                     "history_recovery_required",
                     "checks_unavailable",
-                    "dependency_missing",
-                    "dependency_not_found",
-                    "dependency_self",
-                    "dependency_cycle",
-                    "dependency_cross_project",
-                    "dependency_cross_lineage",
-                    "dependency_wrong_generator",
-                    "dependency_disabled",
-                    "dependency_module_path_missing",
-                    "dependency_unreleased",
-                    "dependency_revision_mismatch",
                     "regeneration_failed",
                     "follow_up_failed",
                     "api_error"
@@ -9908,13 +9785,12 @@
                 "type": {
                   "enum": [
                     "cli",
-                    "go_cli",
                     "mcp",
                     "typescript_sdk",
                     "python_sdk",
                     "go_sdk"
                   ],
-                  "description": "Generator implementation selected by a Target.",
+                  "description": "Package type selected by a Target.",
                   "type": "string"
                 },
                 "name": {
@@ -10074,17 +9950,6 @@
                           "draft_title_invalid",
                           "history_recovery_required",
                           "checks_unavailable",
-                          "dependency_missing",
-                          "dependency_not_found",
-                          "dependency_self",
-                          "dependency_cycle",
-                          "dependency_cross_project",
-                          "dependency_cross_lineage",
-                          "dependency_wrong_generator",
-                          "dependency_disabled",
-                          "dependency_module_path_missing",
-                          "dependency_unreleased",
-                          "dependency_revision_mismatch",
                           "regeneration_failed",
                           "follow_up_failed",
                           "api_error"
@@ -13661,13 +13526,12 @@
               "type": {
                 "enum": [
                   "cli",
-                  "go_cli",
                   "mcp",
                   "typescript_sdk",
                   "python_sdk",
                   "go_sdk"
                 ],
-                "description": "Generator implementation selected by a Target. This is configuration, not identity; several Targets may use the same generator. cli is the TypeScript CLI; go_cli is the native Go CLI, a distinct product that imports one exact paired Go SDK module rather than a client of its own.",
+                "description": "Package type selected by a Target. Several Targets may use the same type. The CLI is a self-contained command-line package and requires no SDK Target.",
                 "type": "string"
               }
             },
@@ -13685,37 +13549,8 @@
             "type": "string"
           },
           "module_path": {
-            "description": "Go module path override for the generated artifact's own module. Valid only for the Go SDK and Go CLI Targets. Projects derive this from the Go destination repository by default.",
+            "description": "Go module path override for the generated artifact's own module. Valid only for the Go SDK and CLI Targets. Projects derive this from the Go destination repository by default.",
             "type": "string"
-          },
-          "go_sdk": {
-            "description": "The exact paired Go SDK a go_cli generation is built on. Required when target.type is go_cli and rejected otherwise. The descriptor is closed and immutable, because a CLI that pins a range or a branch pins nothing.",
-            "properties": {
-              "module_path": {
-                "description": "Go module path of the SDK the CLI imports, for example github.com/acme/payments-go. Must be a valid Go module path.",
-                "type": "string"
-              },
-              "version": {
-                "description": "Exact SDK module version the CLI requires: v-prefixed SemVer such as v1.2.3, or an immutable Go pseudo-version naming a commit such as v0.0.0-20240824120000-abcdef123456. Ranges, branches, and \"latest\" are rejected.",
-                "type": "string"
-              },
-              "spec_digest": {
-                "description": "SHA-256 hex digest of the Spec the SDK was generated from. Must match the resolved Spec, or the request fails with spec_invalid.",
-                "pattern": "^[a-f0-9]{64}$",
-                "type": "string"
-              },
-              "package_name": {
-                "description": "Go package identifier of the SDK, when the module path's last element does not imply it. Optional.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "module_path",
-              "version",
-              "spec_digest"
-            ],
-            "additionalProperties": false,
-            "type": "object"
           },
           "config": {
             "description": "Everything Typeship needs beyond the Spec, in one object: generation customization (globals, retries, pagination, readme) and how the generated tooling behaves (cli, mcp, package, docs_url). Plain configuration. Typeship never requires vendor extensions inside the Spec itself. One-shot generation also accepts GraphQL settings here; stored projects keep those settings on their Spec.",
