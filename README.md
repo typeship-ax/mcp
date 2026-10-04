@@ -9,7 +9,7 @@ Resolve an OpenAPI or GraphQL Spec, diagnose it, and keep every selected CLI, MC
 MCP clients start the server with `npx`, so it needs no separate installation (see [Connect an MCP client](#connect-an-mcp-client)). To install the `typeship-mcp` command globally instead:
 
 ```sh
-npm install --global @typeship-ax/mcp@0.23.0
+npm install --global @typeship-ax/mcp@0.24.0
 ```
 
 Requires Node.js 20+.
