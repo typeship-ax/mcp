@@ -142,6 +142,7 @@ jobs:
           TARGET_ID: "${{ matrix.target_id }}"
           VERSION: "${{ matrix.version }}"
           DIRECTORY: "${{ matrix.directory }}"
+          OUTPUT: "${{ matrix.output }}"
         run: |
           release_sha=$(git rev-parse HEAD)
           git fetch --tags --force
@@ -167,8 +168,36 @@ jobs:
           else
             gh release create "$CANONICAL_TAG" --title "$VERSION" --notes-file "$RUNNER_TEMP/typeship-release-notes.md" --verify-tag
           fi
-          echo "ARTIFACT_DIGEST=git:$release_sha" >> "$GITHUB_ENV"
+          test "$OUTPUT" = cli || echo "ARTIFACT_DIGEST=git:$release_sha" >> "$GITHUB_ENV"
           echo "REGISTRY_URL=https://github.com/$GITHUB_REPOSITORY/releases/tag/$CANONICAL_TAG" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        if: matrix.destination == 'github' && matrix.output == 'cli'
+        with: { go-version: "1.23", cache: false }
+      - name: Attach CLI executables to the GitHub Release
+        if: matrix.destination == 'github' && matrix.output == 'cli'
+        working-directory: ${{ matrix.directory || '.' }}
+        env:
+          VERSION: "${{ matrix.version }}"
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          curl -fsSL "https://github.com/goreleaser/goreleaser/releases/download/v2.18.2/goreleaser_Linux_x86_64.tar.gz" -o "$RUNNER_TEMP/goreleaser.tar.gz"
+          echo "0a96edc9d9bc594e4a41cc4d59467c182062910ab24d9d1f6dd7b667d32606d3  $RUNNER_TEMP/goreleaser.tar.gz" | sha256sum --check
+          tar xzf "$RUNNER_TEMP/goreleaser.tar.gz" -C "$RUNNER_TEMP" goreleaser
+          GORELEASER_CURRENT_TAG="v$VERSION" "$RUNNER_TEMP/goreleaser" release --clean --skip=publish,validate,announce
+          published="$RUNNER_TEMP/published-assets"
+          mkdir -p "$published"
+          existing=$(gh release view "$CANONICAL_TAG" --json assets --jq '.assets[].name')
+          attach() {
+            if printf '%s\n' "$existing" | grep -Fqx "$1"; then
+              gh release download "$CANONICAL_TAG" --pattern "$1" --dir "$published" --clobber
+              cmp -s "dist/$1" "$published/$1" || { echo "The GitHub Release already has a different $1" >&2; exit 1; }
+            else
+              gh release upload "$CANONICAL_TAG" "dist/$1"
+            fi
+          }
+          while read -r _ name; do attach "$name"; done < dist/checksums.txt
+          attach checksums.txt
+          echo "ARTIFACT_DIGEST=git:$(git rev-parse HEAD)+sha256:$(sha256sum dist/checksums.txt | cut -d' ' -f1)" >> "$GITHUB_ENV"
       - name: Build and publish npm package
         if: matrix.destination == 'npm'
         working-directory: ${{ matrix.directory || '.' }}

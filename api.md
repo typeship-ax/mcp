@@ -742,10 +742,6 @@ Input schema:
                     "null"
                   ]
                 },
-                "update_notice": {
-                  "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
-                  "type": "boolean"
-                },
                 "changelog_url": {
                   "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
                   "type": [
@@ -761,14 +757,14 @@ Input schema:
                   ]
                 },
                 "mcp_url": {
-                  "description": "Hosted MCP endpoint installed by the generated CLI instead of launching the package's local stdio server.",
+                  "description": "Fallback MCP endpoint used by the generated CLI when the Project has no Typeship-hosted MCP endpoint. A hosted endpoint takes precedence over this URL.",
                   "type": [
                     "string",
                     "null"
                   ]
                 },
                 "skills_repo": {
-                  "description": "GitHub owner/name of the skills package the generated CLI offers to install during init.",
+                  "description": "Repository in owner/name format that the generated CLI's init command offers for skill installation.",
                   "type": [
                     "string",
                     "null"
@@ -1762,10 +1758,6 @@ Input schema:
                     "null"
                   ]
                 },
-                "update_notice": {
-                  "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
-                  "type": "boolean"
-                },
                 "changelog_url": {
                   "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
                   "type": [
@@ -1781,14 +1773,14 @@ Input schema:
                   ]
                 },
                 "mcp_url": {
-                  "description": "Hosted MCP endpoint installed by the generated CLI instead of launching the package's local stdio server.",
+                  "description": "Fallback MCP endpoint used by the generated CLI when the Project has no Typeship-hosted MCP endpoint. A hosted endpoint takes precedence over this URL.",
                   "type": [
                     "string",
                     "null"
                   ]
                 },
                 "skills_repo": {
-                  "description": "GitHub owner/name of the skills package the generated CLI offers to install during init.",
+                  "description": "Repository in owner/name format that the generated CLI's init command offers for skill installation.",
                   "type": [
                     "string",
                     "null"
@@ -4970,10 +4962,6 @@ Input schema:
                     "null"
                   ]
                 },
-                "update_notice": {
-                  "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
-                  "type": "boolean"
-                },
                 "changelog_url": {
                   "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
                   "type": [
@@ -4989,14 +4977,14 @@ Input schema:
                   ]
                 },
                 "mcp_url": {
-                  "description": "Hosted MCP endpoint installed by the generated CLI instead of launching the package's local stdio server.",
+                  "description": "Fallback MCP endpoint used by the generated CLI when the Project has no Typeship-hosted MCP endpoint. A hosted endpoint takes precedence over this URL.",
                   "type": [
                     "string",
                     "null"
                   ]
                 },
                 "skills_repo": {
-                  "description": "GitHub owner/name of the skills package the generated CLI offers to install during init.",
+                  "description": "Repository in owner/name format that the generated CLI's init command offers for skill installation.",
                   "type": [
                     "string",
                     "null"
@@ -6384,10 +6372,6 @@ Input schema:
                     "null"
                   ]
                 },
-                "update_notice": {
-                  "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
-                  "type": "boolean"
-                },
                 "changelog_url": {
                   "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
                   "type": [
@@ -6403,14 +6387,14 @@ Input schema:
                   ]
                 },
                 "mcp_url": {
-                  "description": "Hosted MCP endpoint installed by the generated CLI instead of launching the package's local stdio server.",
+                  "description": "Fallback MCP endpoint used by the generated CLI when the Project has no Typeship-hosted MCP endpoint. A hosted endpoint takes precedence over this URL.",
                   "type": [
                     "string",
                     "null"
                   ]
                 },
                 "skills_repo": {
-                  "description": "GitHub owner/name of the skills package the generated CLI offers to install during init.",
+                  "description": "Repository in owner/name format that the generated CLI's init command offers for skill installation.",
                   "type": [
                     "string",
                     "null"
@@ -13497,10 +13481,6 @@ Input schema:
                 "null"
               ]
             },
-            "update_notice": {
-              "description": "Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated code phones nobody unless this is enabled.",
-              "type": "boolean"
-            },
             "changelog_url": {
               "description": "Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8 Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to disable, then regenerate.",
               "type": [
@@ -13516,14 +13496,14 @@ Input schema:
               ]
             },
             "mcp_url": {
-              "description": "Hosted MCP endpoint installed by the generated CLI instead of launching the package's local stdio server.",
+              "description": "Fallback MCP endpoint used by the generated CLI when the Project has no Typeship-hosted MCP endpoint. A hosted endpoint takes precedence over this URL.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "skills_repo": {
-              "description": "GitHub owner/name of the skills package the generated CLI offers to install during init.",
+              "description": "Repository in owner/name format that the generated CLI's init command offers for skill installation.",
               "type": [
                 "string",
                 "null"

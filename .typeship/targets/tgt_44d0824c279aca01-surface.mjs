@@ -13,7 +13,7 @@ function run(command, args) {
   if (result.error || result.status !== 0) throw new Error(result.error?.message || result.stdout + result.stderr);
   if (result.stdout) process.stdout.write(result.stdout);
 }
-if (["typescript-sdk", "cli", "mcp"].includes(expected.output)) {
+if (["typescript-sdk", "mcp"].includes(expected.output)) {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   let entry = typeof pkg.exports === "string" ? pkg.exports : pkg.exports?.["."];
   entry = typeof entry === "string" ? entry : entry?.import || entry?.require || entry?.default;
@@ -34,7 +34,7 @@ if (["typescript-sdk", "cli", "mcp"].includes(expected.output)) {
     "        assert callable(value), 'Missing generated method: ' + resource + '.' + method",
   ].join("\n");
   run("python", ["-c", source]);
-} else if (expected.output === "go-sdk" || expected.output === "go-cli") {
+} else if (expected.output === "go-sdk" || expected.output === "cli") {
   const filename = "typeship_surface_" + randomBytes(8).toString("hex") + "_test.go";
   let source = "package " + expected.goPackage + "\n";
   if (expected.output === "go-sdk") {
@@ -57,10 +57,10 @@ if (["typescript-sdk", "cli", "mcp"].includes(expected.output)) {
   try { run("go", ["test", "-run", "^TestTypeshipGeneratedSurface$", "."]); }
   finally { rmSync(filename); }
 }
-if (expected.output === "cli" || expected.output === "mcp") {
+if (expected.output === "mcp") {
   const { OPS } = await import(pathToFileURL(resolve("dist/ops.js")).href);
   assert.ok(Array.isArray(OPS), "Missing generated operation registry");
-  const key = (op) => expected.output === "cli" ? JSON.stringify(op.command) : op.tool;
+  const key = (op) => op.tool;
   const actual = new Map(), incoming = new Map(expected.operationSpecs.map((op) => [key(op), op]));
   for (const op of OPS) if (!actual.has(key(op))) actual.set(key(op), op);
   for (const item of expected.operations) {
@@ -69,22 +69,7 @@ if (expected.output === "cli" || expected.output === "mcp") {
     const original = incoming.get(key(item));
     for (const key of ["resource", "method", "httpMethod", "path"]) assert.equal(found[key], original[key], "Changed generated operation " + key);
   }
-  if (expected.output === "cli") {
-    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-    const binary = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.[expected.executableName];
-    assert.equal(typeof binary, "string", "Missing CLI executable");
-    // Load the full public command table once, regardless of operation count.
-    const result = spawnSync(process.execPath, [resolve(binary), "help", "--json", "--all"], { encoding: "utf8", timeout: 15000, maxBuffer: 8 * 1024 * 1024 });
-    assert.equal(result.status, 0, "Missing public command discovery: " + result.stderr);
-    const help = JSON.parse(result.stdout);
-    const commands = new Map((help.resources || []).flatMap((resource) => (resource.commands || []).map((command) => [JSON.stringify([resource.resource, command.command]), command])));
-    for (const item of expected.operationSpecs) {
-      const found = commands.get(JSON.stringify(item.command));
-      assert.ok(found, "Missing generated public command " + item.command.join(" "));
-      assert.equal(found.method, item.httpMethod, "Changed public command method");
-      assert.equal(found.path, item.path, "Changed public command path");
-    }
-  }
+
 }
 if (expected.output === "mcp") {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));

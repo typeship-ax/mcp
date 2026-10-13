@@ -2373,11 +2373,6 @@ export interface CliBehavior {
   /** Command users run, independent of how the CLI is distributed. */
   command_name?: string | null;
   /**
-   * Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated
-   * code phones nobody unless this is enabled.
-   */
-  update_notice?: boolean;
-  /**
    * Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8
    * Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to
    * disable, then regenerate.
@@ -2389,11 +2384,14 @@ export interface CliBehavior {
    */
   support_url?: string | null;
   /**
-   * Hosted MCP endpoint installed by the generated CLI instead of launching the package's local
-   * stdio server.
+   * Fallback MCP endpoint used by the generated CLI when the Project has no Typeship-hosted MCP
+   * endpoint. A hosted endpoint takes precedence over this URL.
    */
   mcp_url?: string | null;
-  /** GitHub owner/name of the skills package the generated CLI offers to install during init. */
+  /**
+   * Repository in owner/name format that the generated CLI's init command offers for skill
+   * installation.
+   */
   skills_repo?: string | null;
 }
 
@@ -2402,11 +2400,6 @@ export interface TargetCliBehavior {
   /** Command users run, independent of how the CLI is distributed. */
   command_name?: string | null;
   /**
-   * Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated
-   * code phones nobody unless this is enabled.
-   */
-  update_notice?: boolean;
-  /**
    * Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8
    * Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to
    * disable, then regenerate.
@@ -2418,11 +2411,14 @@ export interface TargetCliBehavior {
    */
   support_url?: string | null;
   /**
-   * Hosted MCP endpoint installed by the generated CLI instead of launching the package's local
-   * stdio server.
+   * Fallback MCP endpoint used by the generated CLI when the Project has no Typeship-hosted MCP
+   * endpoint. A hosted endpoint takes precedence over this URL.
    */
   mcp_url?: string | null;
-  /** GitHub owner/name of the skills package the generated CLI offers to install during init. */
+  /**
+   * Repository in owner/name format that the generated CLI's init command offers for skill
+   * installation.
+   */
   skills_repo?: string | null;
   /**
    * Enable webhook relay sessions for this CLI Target. Requires Pro. Turning it off prevents new
@@ -3917,11 +3913,6 @@ export interface CliBehaviorResponse {
   /** Command users run, independent of how the CLI is distributed. */
   command_name?: string | null;
   /**
-   * Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated
-   * code phones nobody unless this is enabled.
-   */
-  update_notice?: boolean;
-  /**
    * Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8
    * Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to
    * disable, then regenerate.
@@ -3933,11 +3924,14 @@ export interface CliBehaviorResponse {
    */
   support_url?: string | null;
   /**
-   * Hosted MCP endpoint installed by the generated CLI instead of launching the package's local
-   * stdio server.
+   * Fallback MCP endpoint used by the generated CLI when the Project has no Typeship-hosted MCP
+   * endpoint. A hosted endpoint takes precedence over this URL.
    */
   mcp_url?: string | null;
-  /** GitHub owner/name of the skills package the generated CLI offers to install during init. */
+  /**
+   * Repository in owner/name format that the generated CLI's init command offers for skill
+   * installation.
+   */
   skills_repo?: string | null;
 }
 
@@ -3946,11 +3940,6 @@ export interface TargetCliBehaviorResponse {
   /** Command users run, independent of how the CLI is distributed. */
   command_name?: string | null;
   /**
-   * Opt in to a once-a-day registry check that prints an upgrade hint. Off by default; generated
-   * code phones nobody unless this is enabled.
-   */
-  update_notice?: boolean;
-  /**
    * Public HTTP(S) URL read by the optional changelog command in generated CLIs. Supports UTF-8
    * Markdown, plain text, and static HTML; embedded credentials are not allowed. Omit or clear to
    * disable, then regenerate.
@@ -3962,11 +3951,14 @@ export interface TargetCliBehaviorResponse {
    */
   support_url?: string | null;
   /**
-   * Hosted MCP endpoint installed by the generated CLI instead of launching the package's local
-   * stdio server.
+   * Fallback MCP endpoint used by the generated CLI when the Project has no Typeship-hosted MCP
+   * endpoint. A hosted endpoint takes precedence over this URL.
    */
   mcp_url?: string | null;
-  /** GitHub owner/name of the skills package the generated CLI offers to install during init. */
+  /**
+   * Repository in owner/name format that the generated CLI's init command offers for skill
+   * installation.
+   */
   skills_repo?: string | null;
   /**
    * Enable webhook relay sessions for this CLI Target. Requires Pro. Turning it off prevents new

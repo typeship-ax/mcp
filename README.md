@@ -18,6 +18,8 @@ Requires Node.js 20+.
 
 Provide `TYPESHIP_TOKEN` through the MCP client's environment or secret settings. Keep credential values out of URLs and command arguments.
 
+Set `TYPESHIP_HEADERS` to newline-separated `Name: value` entries when the API needs custom headers.
+
 ### Local
 
 - Claude Code: `claude mcp add typeship -- npx -y --package @typeship-ax/mcp typeship-mcp`
