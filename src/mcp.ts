@@ -43,7 +43,7 @@ export { McpAccountLinkRequired } from "./mcp-protocol.js";
 const BIN = "typeship";
 const PKG_NAME = "@typeship-ax/mcp";
 const SERVER_NAME = "typeship-mcp";
-const SERVER_VERSION = "0.23.0";
+const SERVER_VERSION = "0.24.0";
 /** The MCP client's announced name (clientInfo in request _meta), for the User-Agent. */
 let MCP_CLIENT_NAME: string | null = null;
 function noteClientInfo(message: unknown): void {
@@ -652,8 +652,33 @@ function toolsSwitchProblem(): string | null {
   const resources = [...new Set(OPS.map((op) => op.resource))];
   return TOOLS_SWITCH + " names nothing in this API: " + unmatched.join(", ") + ". Resources: " + resources.slice(0, 30).join(", ") + (resources.length > 30 ? ", …" : "") + ".";
 }
+/** The flags this server reads. Anything else is a typo (--readonly) or a
+ * CLI flag passed to the wrong binary, and would otherwise be ignored. */
+const SERVER_FLAGS = "--read-only, --tools <list>, --header \"Name: value\", --profile <name>, --http [port]";
+function argvProblem(): string | null {
+  for (let i = 0; i < ARGV.length; i++) {
+    const arg = ARGV[i]!;
+    if (arg === "--read-only" || arg.startsWith("--header=") || arg.startsWith("--profile=")) continue;
+    if (arg === "--tools" || arg === "--header" || arg === "--profile") {
+      // A value-taking flag must not swallow the next flag as its value.
+      const value = ARGV[++i];
+      if (value === undefined || value.startsWith("-")) {
+        return arg === "--tools" ? "--tools needs a comma-separated list of resources, tool names, or resource.method."
+          : arg === "--header" ? "--header needs a value such as \"Name: value\"."
+          : "--profile needs a profile name.";
+      }
+      continue;
+    }
+    if (arg === "--http") {
+      if (ARGV[i + 1] !== undefined && /^\d+$/.test(ARGV[i + 1]!)) i++;
+      continue;
+    }
+    return (arg.startsWith("-") ? "unknown flag " : "unexpected argument ") + JSON.stringify(arg) + ". This server takes " + SERVER_FLAGS + ".";
+  }
+  return null;
+}
 if (invokedDirectly()) {
-  const problem = toolsSwitchProblem();
+  const problem = argvProblem() ?? toolsSwitchProblem();
   if (problem !== null) {
     process.stderr.write(SERVER_NAME + ": " + problem + "\n");
     process.exit(2);

@@ -82,12 +82,16 @@ export function inputTypeText(table: InputTypes, name: string, lookup: TypeLooku
   if (doc.description) lines.push(prose(doc.description));
   const mentioned: string[] = [];
   if (doc.fields) {
-    const entries = Object.entries(doc.fields);
-    lines.push("", entries.length === 0 ? "No fields." : "Fields (" + entries.length + "):");
+    // Deprecated fields follow on one names-only line, so a large filter
+    // type leads with what a new call should use.
+    const entries = Object.entries(doc.fields).filter(([, spec]) => !spec.deprecated || spec.required);
+    const deprecated = Object.entries(doc.fields).filter(([, spec]) => spec.deprecated && !spec.required).map(([field]) => field);
+    lines.push("", entries.length === 0 && deprecated.length === 0 ? "No fields." : "Fields (" + entries.length + "):");
     for (const [field, spec] of entries) {
       lines.push(fieldLine(field, spec));
       mentioned.push(...namedTypesIn(table, spec.type));
     }
+    if (deprecated.length > 0) lines.push("Deprecated, avoid (" + deprecated.length + "): " + deprecated.join(", ") + ".");
   } else if (doc.values) {
     const values = doc.values.slice(0, TYPE_ENUM_VALUES).map((value) => JSON.stringify(value));
     lines.push("", "Values: " + values.join(", ") + (doc.values.length > TYPE_ENUM_VALUES ? ", … " + (doc.values.length - TYPE_ENUM_VALUES) + " more" : ""));

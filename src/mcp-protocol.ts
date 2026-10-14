@@ -1541,7 +1541,7 @@ function graphqlVendorCode(error: unknown): string | undefined {
 /** GraphQL error codes whose meaning is settled (Apollo's standard codes,
  * GitHub's types, Linear's codes), by recovery class. Any other code is
  * passed through as is, with no guessed next step. The CLI's
- * classification (cli-agent.ts) uses the same table. */
+ * classification uses the same table. */
 function graphqlErrorClass(code: string): "not_found" | "unauthenticated" | "forbidden" | "bad_input" | "rate_limited" | undefined {
   const c = code.toUpperCase();
   if (c === "NOT_FOUND") return "not_found";
@@ -1864,7 +1864,9 @@ interface ArgumentContext { tool: string; types?: InputTypes; path: string[]; ty
  * Each top-level argument is spelled out as deep as fits its budget. */
 function referenceArguments(schema: Record<string, unknown>, lines: string[], context: ArgumentContext): void {
   const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
-  for (const name of Object.keys(properties)) {
+  // Deprecated arguments come last, after everything a new call should use.
+  const ordered = [...Object.keys(properties).filter((name) => !isDeprecatedSchema(properties[name])), ...Object.keys(properties).filter((name) => isDeprecatedSchema(properties[name]))];
+  for (const name of ordered) {
     const only = { ...schema, properties: { [name]: properties[name] } };
     let block: string[] = [];
     // Deepest first; then the same depth without listing the field names
@@ -1878,11 +1880,27 @@ function referenceArguments(schema: Record<string, unknown>, lines: string[], co
   }
 }
 
+/** The schema marks the field deprecated. */
+function isDeprecatedSchema(schema: unknown): boolean {
+  return !!schema && typeof schema === "object" && (schema as { deprecated?: unknown }).deprecated === true;
+}
+
+/**
+ * Deprecated fields in the compact reference: a top-level argument keeps its
+ * line (after the current ones), and nested fields collapse to one names-only
+ * line, so obsolete filters do not crowd out current ones. A path lookup
+ * still gives any deprecated field in full.
+ */
 function referenceArgumentLines(schema: Record<string, unknown>, depth: number, maxDepth: number, names: boolean, indent: string, lines: string[], context: ArgumentContext): void {
   const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
   const required = new Set(Array.isArray(schema.required) ? schema.required as string[] : []);
+  const deprecated: string[] = [];
   for (const [name, child] of Object.entries(properties)) {
     if (!child || typeof child !== "object") continue;
+    if (depth > 0 && isDeprecatedSchema(child) && !required.has(name)) {
+      deprecated.push(name);
+      continue;
+    }
     const description = argumentProse(child.description);
     const extras = [
       ...(child.default !== undefined && !/\bdefault\b/i.test(description) ? ["default " + JSON.stringify(child.default)] : []),
@@ -1906,10 +1924,16 @@ function referenceArgumentLines(schema: Record<string, unknown>, depth: number, 
       continue;
     }
     if (!names) continue;
-    const keys = Object.keys(nested.properties as object);
+    const fields = nested.properties as Record<string, unknown>;
+    // A deprecated field the API still requires keeps its name here.
+    const nestedRequired = new Set(Array.isArray(nested.required) ? nested.required as string[] : []);
+    const keys = Object.keys(fields).filter((key) => !isDeprecatedSchema(fields[key]) || nestedRequired.has(key));
+    const obsolete = Object.keys(fields).length - keys.length;
     // Field types (and any cut names) are one path lookup away.
-    lines.push(indent + "  fields: " + keys.slice(0, 40).join(", ") + (keys.length > 40 ? ", … " + (keys.length - 40) + " more: read_docs " + JSON.stringify({ page: context.tool, path: path.join(".") }) + " lists all" : ""));
+    lines.push(indent + "  fields: " + keys.slice(0, 40).join(", ") + (keys.length > 40 ? ", … " + (keys.length - 40) + " more: read_docs " + JSON.stringify({ page: context.tool, path: path.join(".") }) + " lists all" : "")
+      + (obsolete > 0 ? " (and " + obsolete + " deprecated)" : ""));
   }
+  if (deprecated.length > 0) lines.push(indent + "deprecated, avoid: " + deprecated.slice(0, 40).join(", ") + (deprecated.length > 40 ? ", … " + (deprecated.length - 40) + " more" : ""));
 }
 
 /** A result's shape in one line: keys and types, one level into objects. */
